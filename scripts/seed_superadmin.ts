@@ -6,23 +6,23 @@ async function seed() {
     await connectDB();
     console.log("Connected to MongoDB");
 
-    let admin = await Admin.findOne({ email: "admin@vedhshala.com" });
+    let admin = await Admin.findOne({ email: "rishi.encodency95@gmail.com" });
 
     if (admin) {
-      admin.password = "Admin@12345"; // Mongoose pre("save") will hash it once!
+      admin.password = "Rishi@123"; // Mongoose pre("save") will hash it once!
       admin.loginAttempts = 0;
       admin.lockUntil = undefined;
       admin.isActive = true;
       admin.isTwoFactorEnabled = false;
       await admin.save();
-      console.log("Updated Super Admin password to: Admin@12345 (2FA reset to false)");
+      console.log("Updated Super Admin password to: Rishi@123 (2FA reset to false)");
     } else {
       admin = await Admin.create({
-        name: "Super Admin",
-        email: "admin@vedhshala.com",
+        name: "Rishi",
+        email: "rishi.encodency95@gmail.com",
         phone: "+91 9876543210",
         employeeId: "EMP-0001",
-        password: "Admin@12345", // Mongoose pre("save") will hash it once!
+        password: "Rishi@123", // Mongoose pre("save") will hash it once!
         role: "superadmin",
         isTwoFactorEnabled: false,
         isActive: true,
@@ -31,9 +31,9 @@ async function seed() {
     }
 
     // Verify password locally right now
-    const testAdmin = await Admin.findOne({ email: "admin@vedhshala.com" }).select("+password");
-    const matches = await testAdmin?.comparePassword("Admin@12345");
-    console.log("Verification check: password matches Admin@12345?", matches);
+    const testAdmin = await Admin.findOne({ email: "rishi.encodency95@gmail.com" }).select("+password");
+    const matches = await testAdmin?.comparePassword("Rishi@123");
+    console.log("Verification check: password matches Rishi@123?", matches);
 
     process.exit(0);
   } catch (err) {
