@@ -10,10 +10,12 @@ export const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Rate limiter for 2FA verification endpoint — 3 attempts per 5 minutes
+// Rate limiter for 2FA verification endpoint — 5 wrong codes per 5 minutes
 export const twoFALimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 3,
+  max: 5,
+  // Only wrong codes count: successful logins must not use up the limit
+  skipSuccessfulRequests: true,
   message: new ApiError(429, "Too many 2FA attempts. Try again in 5 minutes."),
   standardHeaders: true,
   legacyHeaders: false,

@@ -10,6 +10,11 @@
     "seed:admin": "tsx scripts/seed_superadmin.ts",
     "seed:career-options": "tsx scripts/seed_career_options.ts",
     "seed:credentials": "tsx scripts/seed_credentials.ts",
+    "seed:home1": "tsx scripts/seed_home1.ts",
+    "seed:home2": "tsx scripts/seed_home2.ts",
+    "seed:pages": "tsx scripts/seed_pages.ts",
+    "seed:products": "tsx scripts/seed_products.ts",
+    "seed:testimonials": "tsx scripts/seed_testimonials.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

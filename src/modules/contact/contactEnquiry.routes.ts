@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { protect } from "../../middlewares/auth.middleware";
 import {
   submitContactEnquiry,
   getAllContactEnquiries,
@@ -10,9 +11,10 @@ import {
 const router = Router();
 
 router.post("/", submitContactEnquiry);
-router.get("/", getAllContactEnquiries);
-router.get("/:id", getContactEnquiryById);
-router.put("/:id", updateContactEnquiry);
-router.delete("/:id", deleteContactEnquiry);
+// Admin only: these return / change visitors' names, phones and messages
+router.get("/", protect, getAllContactEnquiries);
+router.get("/:id", protect, getContactEnquiryById);
+router.put("/:id", protect, updateContactEnquiry);
+router.delete("/:id", protect, deleteContactEnquiry);
 
 export default router;

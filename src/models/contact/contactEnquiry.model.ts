@@ -12,6 +12,10 @@ const contactEnquirySchema = new Schema(
     service: { type: String, default: "", trim: true },
     message: { type: String, required: true, trim: true },
     eventName: { type: String, default: "BOE2026", trim: true },
+    // Where it came from: "contact-page" for the Contact Us page form (unset for older entries)
+    source: { type: String, default: "", trim: true },
+    // "I agree to be contacted about my enquiry"
+    consent: { type: Boolean, default: false },
     status: {
       type: String,
       default: "pending",

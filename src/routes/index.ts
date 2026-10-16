@@ -19,6 +19,11 @@ import locationsRouter from "../modules/locations/locations.routes";
 import systemServicesRouter from "../modules/systemServices/systemServices.routes";
 import chatRouter from "../modules/chat/chat.routes";
 import chatbotRouter from "../modules/chatbot/chatbot.routes";
+import { home1AdminRouter, home1PublicRouter } from "../modules/home1/home1.routes";
+import { home2AdminRouter, home2PublicRouter } from "../modules/home2/home2.routes";
+import { pageContentAdminRouter, pageContentPublicRouter } from "../modules/pageContent/pageContent.routes";
+import { productsAdminRouter, productsPublicRouter } from "../modules/products/products.routes";
+import { testimonialsAdminRouter, testimonialsPublicRouter } from "../modules/testimonials/testimonials.routes";
 
 const router = Router();
 
@@ -57,6 +62,26 @@ router.use("/contact-enquiry", contactEnquiryRouter);
 router.use("/website/contact-enquiry", contactEnquiryRouter);
 router.use("/website/contact", contactEnquiryRouter);
 router.use("/verify", verifyRouter);
+
+// Home 1 (website "/" — Health Journal)
+router.use("/cms/home1", home1AdminRouter);
+router.use("/website/home1", home1PublicRouter);
+
+// Home 2 (website "/home")
+router.use("/cms/home2", home2AdminRouter);
+router.use("/website/home2", home2PublicRouter);
+
+// Other Pages & CMS pages (About Us, About Story, …): modules/pageContent/pages
+router.use("/cms/pages", pageContentAdminRouter);
+router.use("/website/pages", pageContentPublicRouter);
+
+// Products page catalogue + enquiries (the page sections themselves are in /cms/pages/products)
+router.use("/cms/products", productsAdminRouter);
+router.use("/website/products", productsPublicRouter);
+
+// Patient Testimonials cards + patient feedback (page texts are in /cms/pages/testimonials)
+router.use("/cms/testimonials", testimonialsAdminRouter);
+router.use("/website/testimonials", testimonialsPublicRouter);
 router.use("/website/verify", verifyRouter);
 
 export default router;
