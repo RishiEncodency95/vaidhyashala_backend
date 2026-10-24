@@ -8,9 +8,10 @@ import { contactPage } from "./contact";
 import { privacyPage } from "./privacy";
 import { termsPage } from "./terms";
 import { testimonialsPage } from "./testimonials";
+import { careersPage } from "./careers";
 
 /** Every page managed through /api/cms/pages/:pageKey — add new pages here */
-export const PAGE_DEFINITIONS: PageContentDefinition[] = [aboutUsPage, aboutStoryPage, treatmentsPage, panchakarmaPage, productsPage, contactPage, privacyPage, termsPage, testimonialsPage];
+export const PAGE_DEFINITIONS: PageContentDefinition[] = [aboutUsPage, aboutStoryPage, treatmentsPage, panchakarmaPage, productsPage, contactPage, privacyPage, termsPage, testimonialsPage, careersPage];
 
 export const getPageDefinition = (key: string) => PAGE_DEFINITIONS.find((p) => p.key === key);
 
