@@ -9,6 +9,7 @@ import {
   seoSchema,
   publishSchema,
   createAppointmentSchema,
+  createConsultationSchema,
   updateAppointmentSchema,
   idParamSchema,
 } from "./home2.schema";
@@ -38,4 +39,5 @@ export const home2PublicRouter = Router();
 
 home2PublicRouter.get("/", controller.getPublicHome2);
 home2PublicRouter.get("/seo", controller.getPublicSeo);
+home2PublicRouter.post("/consultations", enquiryLimiter, validateRequest(createConsultationSchema), controller.createConsultation);
 home2PublicRouter.post("/appointments", enquiryLimiter, validateRequest(createAppointmentSchema), controller.createAppointment);

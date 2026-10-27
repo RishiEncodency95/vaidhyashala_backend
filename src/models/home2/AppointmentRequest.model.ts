@@ -1,15 +1,17 @@
 import mongoose, { Document, Schema } from "mongoose";
 
-/** Appointment / consultation requests: Home 2 "Plan your first visit" and the Panchakarma "Request a Consultation" form */
+/** Appointment / consultation requests: Home 2 "Plan your first visit", the "Plan your consultation" popup and the Panchakarma "Request a Consultation" form */
 export type AppointmentStatus = "new" | "contacted" | "confirmed" | "cancelled";
 
-export type AppointmentSource = "home2" | "panchakarma";
+export type AppointmentSource = "home2" | "panchakarma" | "consultation";
 
 export interface IAppointmentRequest extends Document {
   source: AppointmentSource;
   service: string;
   serviceLabel: string;
   preferredDate?: Date;
+  preferredTime?: string;
+  consent?: boolean;
   consultationType?: "clinic" | "online";
   name?: string;
   phone?: string;
@@ -24,10 +26,12 @@ export interface IAppointmentRequest extends Document {
 
 const appointmentRequestSchema = new Schema<IAppointmentRequest>(
   {
-    source: { type: String, enum: ["home2", "panchakarma"], default: "home2", index: true },
+    source: { type: String, enum: ["home2", "panchakarma", "consultation"], default: "home2", index: true },
     service: { type: String, trim: true, default: "" },
     serviceLabel: { type: String, trim: true, default: "" },
     preferredDate: { type: Date },
+    preferredTime: { type: String, trim: true, default: "" },
+    consent: { type: Boolean, default: false },
     consultationType: { type: String, enum: ["clinic", "online"] },
     name: { type: String, trim: true, default: "" },
     phone: { type: String, trim: true, default: "" },

@@ -1,7 +1,7 @@
 import { Home2Page } from "../../models/home2/Home2Page.model";
 import { AppointmentRequest, AppointmentStatus } from "../../models/home2/AppointmentRequest.model";
 import { ApiError } from "../../utils/ApiError";
-import { HOME2_PAGE_KEY, HOME2_SECTION_KEYS, Home2SectionKey, defaultHome2Sections, defaultHome2Seo } from "./home2.defaults";
+import { CONSULTATION_SERVICES, CONSULTATION_SLOTS, HOME2_PAGE_KEY, HOME2_SECTION_KEYS, Home2SectionKey, defaultHome2Sections, defaultHome2Seo } from "./home2.defaults";
 
 // ─── Page (sections + SEO + publish) ─────────────────────────────────────────
 
@@ -81,9 +81,54 @@ export const createAppointment = async (input: AppointmentInput, ip?: string) =>
   };
 };
 
-export const listAppointments = async (query: { status?: string; source?: string; page?: number; limit?: number }) => {
+export interface ConsultationInput {
+  consultationType: "clinic" | "online";
+  name: string;
+  phone: string;
+  email?: string;
+  service: string;
+  preferredDate: string;
+  preferredTime: string;
+  message?: string;
+  consent: boolean;
+}
+
+/** The "Plan your consultation" popup: saved with the other appointment requests (source "consultation") */
+export const createConsultation = async (input: ConsultationInput, ip?: string) => {
+  const service = CONSULTATION_SERVICES.find((s) => s.value === input.service);
+  const slot = CONSULTATION_SLOTS.find((s) => s.value === input.preferredTime);
+  if (!service) throw ApiError.badRequest("Please choose one of the listed services.");
+  if (!slot) throw ApiError.badRequest("Please choose one of the listed time slots.");
+
+  const doc = await AppointmentRequest.create({
+    source: "consultation",
+    consultationType: input.consultationType,
+    name: input.name,
+    phone: input.phone,
+    email: input.email,
+    service: service.value,
+    serviceLabel: service.label,
+    preferredDate: new Date(`${input.preferredDate}T00:00:00`),
+    preferredTime: slot.label,
+    message: input.message,
+    consent: input.consent,
+    ip,
+  });
+  return {
+    _id: doc._id,
+    status: doc.status,
+    message: "Thank you! Your consultation request has been received. Our team will contact you shortly.",
+  };
+};
+
+export const listAppointments = async (query: { status?: string; source?: string; q?: string; page?: number; limit?: number }) => {
   const filter: Record<string, unknown> = {};
-  if (query.source === "home2" || query.source === "panchakarma") filter.source = query.source;
+  if (query.source === "home2" || query.source === "panchakarma" || query.source === "consultation") filter.source = query.source;
+  const q = (query.q ?? "").trim();
+  if (q) {
+    const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    filter.$or = [{ name: re }, { phone: re }, { email: re }, { serviceLabel: re }];
+  }
   if (query.status && ["new", "contacted", "confirmed", "cancelled"].includes(query.status)) filter.status = query.status;
   const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
   const page = Math.max(Number(query.page) || 1, 1);

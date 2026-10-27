@@ -56,6 +56,7 @@ export const updatePublish = asyncHandler(async (req: Request, res: Response) =>
 
 export const listAppointments = asyncHandler(async (req: Request, res: Response) => {
   const result = await home2Service.listAppointments({
+    q: typeof req.query.q === "string" ? req.query.q : undefined,
     status: typeof req.query.status === "string" ? req.query.status : undefined,
     source: typeof req.query.source === "string" ? req.query.source : undefined,
     page: Number(req.query.page) || undefined,
@@ -83,6 +84,11 @@ export const getPublicHome2 = asyncHandler(async (_req: Request, res: Response) 
 export const getPublicSeo = asyncHandler(async (_req: Request, res: Response) => {
   res.set("Cache-Control", "no-store");
   res.status(200).json(ApiResponse.ok("Home 2 SEO", (await home2Service.getPage()).seo));
+});
+
+export const createConsultation = asyncHandler(async (req: Request, res: Response) => {
+  const result = await home2Service.createConsultation(req.body, clientIp(req));
+  res.status(201).json(ApiResponse.created(result.message, result));
 });
 
 export const createAppointment = asyncHandler(async (req: Request, res: Response) => {

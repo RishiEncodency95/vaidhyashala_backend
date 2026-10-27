@@ -207,3 +207,18 @@ export const defaultHome2Seo = {
   robotsFollow: true,
   schemaMarkup: "",
 };
+
+/** Services and time slots offered in the "Plan your consultation" popup (same as the website's form) */
+export const CONSULTATION_SERVICES = [
+  { value: "ayurvedic-consultation", label: "Ayurvedic Doctor Consultation" },
+  { value: "panchakarma-therapies", label: "Panchakarma Therapies" },
+  { value: "chronic-care", label: "Chronic Care & Health Concerns" },
+  { value: "yoga-lifestyle", label: "Yoga & Lifestyle Guidance" },
+  { value: "medicines-products", label: "Medicines & Products Consultation" },
+];
+
+export const CONSULTATION_SLOTS = [
+  { value: "morning", label: "Morning (09:00 AM – 12:00 PM)" },
+  { value: "afternoon", label: "Afternoon (12:00 PM – 03:00 PM)" },
+  { value: "evening", label: "Evening (03:00 PM – 07:00 PM)" },
+];

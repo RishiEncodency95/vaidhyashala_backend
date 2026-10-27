@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { HOME2_SECTION_KEYS } from "./home2.defaults";
+import { CONSULTATION_SERVICES, CONSULTATION_SLOTS, HOME2_SECTION_KEYS } from "./home2.defaults";
 
 // SEO and Publish bodies are the same as Home 1's
 export { seoSchema, publishSchema } from "../home1/home1.schema";
@@ -159,6 +159,31 @@ export const createAppointmentSchema = z.object({
         .or(z.literal("")),
       email: z.string().trim().email("Invalid email").max(200).optional().or(z.literal("")),
       message: text(1000).optional(),
+    })
+    .strict(),
+});
+
+/** The "Plan your consultation" popup (Navbar, Home hero, Footer) */
+export const createConsultationSchema = z.object({
+  body: z
+    .object({
+      consultationType: z.enum(["clinic", "online"]),
+      name: text(100).min(1, "Please enter your full name"),
+      phone: z.string().trim().regex(/^[+\d][\d\s-]{6,18}$/, "Please enter a valid mobile number"),
+      email: z.string().trim().email("Please enter a valid email").max(200).optional().or(z.literal("")),
+      service: z.enum(CONSULTATION_SERVICES.map((s) => s.value) as [string, ...string[]], { message: "Please choose a service" }),
+      preferredDate: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "Preferred date must be YYYY-MM-DD")
+        .refine((v) => {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const d = new Date(`${v}T00:00:00`);
+          return !Number.isNaN(d.getTime()) && d >= today;
+        }, "Preferred date cannot be in the past"),
+      preferredTime: z.enum(CONSULTATION_SLOTS.map((s) => s.value) as [string, ...string[]], { message: "Please choose a time slot" }),
+      message: text(1000).optional(),
+      consent: z.literal(true, { message: "Please agree to be contacted about your request" }),
     })
     .strict(),
 });
