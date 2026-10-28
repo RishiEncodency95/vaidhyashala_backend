@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseSchemaMarkup } from "../../utils/schemaMarkup";
 
 const text = (max = 500) => z.string().trim().max(max);
 const objectId = z.string().regex(/^[a-f\d]{24}$/i, "Invalid id");
@@ -91,18 +92,14 @@ export const seoSchema = z.object({
       ogImage: text(1000),
       robotsIndex: z.boolean(),
       robotsFollow: z.boolean(),
+      // Plain JSON-LD, or JSON-LD inside <script type="application/ld+json"> / <script type="application/json">
       schemaMarkup: z
         .string()
         .max(20000)
-        .refine((v) => {
-          if (!v.trim()) return true;
-          try {
-            JSON.parse(v);
-            return true;
-          } catch {
-            return false;
-          }
-        }, "Schema markup must be valid JSON-LD"),
+        .refine(
+          (v) => parseSchemaMarkup(v) !== null,
+          "Schema markup must be valid JSON-LD (plain JSON, or JSON inside a <script> tag)"
+        ),
       canonicalTag: text(1000),
       openGraphTags: z.string().max(20000),
       h1Tag: text(200),
