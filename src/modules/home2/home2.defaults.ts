@@ -32,7 +32,7 @@ export const defaultHome2Sections = {
     primaryButtonLink: "/#consultation",
     secondaryButtonLabel: "Explore Therapies",
     secondaryButtonLink: "/treatments",
-    image: "/home/h1.webp",
+    image: "/home/hm0.webp",
     imageAlt: "Vaidhyashala Clinic Reception and Lounge - Your care. Our Ayurvedic approach.",
   },
   highlights: {
