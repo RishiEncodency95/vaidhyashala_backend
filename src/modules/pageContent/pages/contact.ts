@@ -119,7 +119,7 @@ export const contactPage: PageContentDefinition = {
       titleLine1: "Let’s begin with",
       titleLine2: "a conversation.",
       subtitle: "Connect with our team for consultations, therapies and product enquiries.",
-      image: "/contct/c1.webp",
+      image: "/contct/ct.webp",
       imageAlt: "Vaidhyashala Clinic Reception - Let's begin with a conversation",
     },
     contactMethods: {

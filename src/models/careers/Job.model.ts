@@ -60,6 +60,8 @@ export interface IJob extends Document {
   showMatchBreakdown: boolean;
 
   // Visibility & scheduling
+  /** Photo on the job's card on the website Careers page (empty = the website picks one) */
+  image?: string;
   featuredJob: boolean;
   applicationOpenDate?: Date;
   applicationClosingDate?: Date;
@@ -80,7 +82,7 @@ const JobSchema: Schema = new Schema(
     title: { type: String, required: true, trim: true },
     slug: { type: String, required: true, unique: true, index: true },
     designation: { type: String, trim: true },
-    company: { type: String, default: "Bharat Organic Expo 2027" },
+    company: { type: String, default: "Vaidhyashala" },
     projectEvent: { type: String, trim: true },
     department: { type: String, required: true, trim: true },
     jobCode: { type: String, trim: true },
@@ -130,6 +132,7 @@ const JobSchema: Schema = new Schema(
     showMatchScoreToCandidate: { type: Boolean, default: true },
     showMatchBreakdown: { type: Boolean, default: true },
 
+    image: { type: String, trim: true, default: "" },
     featuredJob: { type: Boolean, default: false },
     applicationOpenDate: { type: Date },
     applicationClosingDate: { type: Date },

@@ -88,7 +88,7 @@ export const aboutUsPage: PageContentDefinition = {
       titleLine1: "Rooted in Ayurveda.",
       titleHighlight: "Dedicated to your care.",
       subtitle: "Get to know Vaidhyashala and our approach to personalised Ayurvedic care.",
-      image: "/about/i1.webp",
+      image: "/about/ic.webp",
       imageAlt: "Vaidhyashala Clinic - Rooted in Ayurveda. Dedicated to your care.",
     },
     holisticCare: {
@@ -189,7 +189,7 @@ export const aboutUsPage: PageContentDefinition = {
       headingLine2: "by your side.",
       description:
         "Our team of Ayurvedic doctors, Panchakarma therapists and yoga & care professionals work together to provide integrated and compassionate care. We take time to understand your needs and support you at every step of your health journey.",
-      image: "/about/i4.webp",
+      image: "/about/team.webp",
       imageAlt: "The Vaidhyashala Clinical Team of Ayurvedic Doctors and Practitioners",
       imageNote: "Illustrative imagery",
     },
@@ -199,7 +199,7 @@ export const aboutUsPage: PageContentDefinition = {
       heading: "Our clinic atmosphere.",
       description: "A warm, peaceful and welcoming environment designed to support your healing journey.",
       items: [
-        { image: "/about/i8.webp", imageAlt: "Vaidhyashala Clinic Reception and Lounge" },
+        { image: "/about/ip.webp", imageAlt: "Vaidhyashala Clinic Reception and Lounge" },
         { image: "/about/i5.webp", imageAlt: "Vaidhyashala Panchakarma Therapy Suite" },
         { image: "/about/i6.webp", imageAlt: "Vaidhyashala Consultation Lounge" },
       ],
