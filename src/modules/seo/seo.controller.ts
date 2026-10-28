@@ -260,7 +260,10 @@ export const seoController = {
       const title = req.body.metaTitle;
       const desc = req.body.metaDescription;
 
-      const generated = seoService.autoGenerate(pageKey, envType, title, desc);
+      const generated = seoService.autoGenerate(pageKey, envType, title, desc, {
+        path: typeof req.body.path === "string" ? req.body.path : undefined,
+        ogImage: typeof req.body.ogImage === "string" ? req.body.ogImage : undefined,
+      });
       return res.status(200).json({
         success: true,
         data: generated,

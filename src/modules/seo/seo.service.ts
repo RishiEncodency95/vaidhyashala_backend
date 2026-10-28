@@ -1,7 +1,17 @@
 import Seo, { ISeo } from "../../models/seo.model";
 
-const LOCAL_BASE_URL = "http://localhost:3002";
-const LIVE_BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://bharatorganicexpo.com";
+// Website addresses: local dev (the frontend's own port) and the live domain
+const LOCAL_BASE_URL = (process.env.SITE_URL || process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/+$/, "");
+const LIVE_BASE_URL = (process.env.LIVE_SITE_URL || "https://www.vaidhyashala.com").replace(/\/+$/, "");
+const SITE_NAME = "Vaidhyashala";
+const DEFAULT_DESCRIPTION =
+  "Doctor consultations, Panchakarma therapies, yoga and authentic Ayurvedic medicines at Vaidhyashala, with care tailored to you.";
+const DEFAULT_KEYWORDS =
+  "Vaidhyashala, Ayurvedic clinic, Panchakarma centre, Ayurvedic doctor, Ayurvedic treatments, Ayurvedic medicines, yoga";
+const DEFAULT_OG_IMAGE = "/home/h1.webp";
+
+/** CMS page keys whose website path is not "/<key>" (used when the admin does not send the path) */
+const PAGE_PATHS: Record<string, string> = { home: "/", home2: "/home", home1: "/blog", "about-us": "/about" };
 
 export function normalizePageKey(key: string): string {
   let cleaned = (key || "").toLowerCase().trim().replace(/^\/+|\/+$/g, "");
@@ -18,69 +28,56 @@ export function getBaseUrl(envType?: string): string {
   return LIVE_BASE_URL;
 }
 
+/** "/home/h1.webp" -> "<base>/home/h1.webp"; full URLs are kept */
+const absoluteUrl = (baseUrl: string, url: string) => (/^(https?:)?\/\//i.test(url) ? url : `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`);
+
+const escapeAttr = (v: string) => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+
 export function generateSeoDefaults(
   pageKey: string,
   envType: "local" | "live" = "local",
   customTitle?: string,
-  customDesc?: string
+  customDesc?: string,
+  options: { path?: string; ogImage?: string } = {}
 ) {
   const normKey = normalizePageKey(pageKey);
   const baseUrl = envType === "live" ? LIVE_BASE_URL : LOCAL_BASE_URL;
-  const path = normKey === "home" ? "" : `/${normKey}`;
-  const fullUrl = `${baseUrl}${path}`;
+  // The admin sends the page's own website path; otherwise it is worked out from the key
+  const rawPath = (options.path ?? PAGE_PATHS[normKey] ?? `/${normKey}`).trim();
+  const path = rawPath === "/" || rawPath === "" ? "" : `/${rawPath.replace(/^\/+/, "")}`;
+  // "/" and "/home" are the same Home page: its canonical address is the root
+  const isHome = path === "" || path === "/home";
+  const fullUrl = isHome ? `${baseUrl}/` : `${baseUrl}${path}`;
 
+  const pageName = (path.split("/").pop() || "home").replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   const metaTitle =
-    customTitle ||
-    (normKey === "home"
-      ? "Bharat Organic Expo 2027 – International Trade Fair on Organic Products"
-      : `${normKey.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} | Bharat Organic Expo 2027`);
-
-  const metaDescription =
-    customDesc ||
-    "Join Bharat Organic Expo 2027, the premier exhibition and conference for organic food, agriculture, and natural products in India.";
-
-  const metaKeywords =
-    "organic expo, bharat organic expo, organic farming, ayurveda, herbal products, natural wellness, sustainable agriculture";
+    customTitle || (isHome ? `${SITE_NAME} | Ayurvedic Clinic & Panchakarma Centre` : `${pageName} | ${SITE_NAME}`);
+  const metaDescription = customDesc || DEFAULT_DESCRIPTION;
+  const metaKeywords = DEFAULT_KEYWORDS;
 
   const canonicalUrl = fullUrl;
   const canonicalTag = `<link rel="canonical" href="${fullUrl}" />`;
 
-  const ogImage = "https://bharatorganicexpo.com/assets/images/og-banner.png";
+  const ogImage = absoluteUrl(baseUrl, options.ogImage?.trim() || DEFAULT_OG_IMAGE);
 
-  const openGraphTags = `<meta property="og:title" content="${metaTitle}" />
-<meta property="og:description" content="${metaDescription}" />
+  const openGraphTags = `<meta property="og:title" content="${escapeAttr(metaTitle)}" />
+<meta property="og:description" content="${escapeAttr(metaDescription)}" />
 <meta property="og:url" content="${fullUrl}" />
 <meta property="og:type" content="website" />
-<meta property="og:site_name" content="Bharat Organic Expo 2027" />
+<meta property="og:site_name" content="${SITE_NAME}" />
 <meta property="og:image" content="${ogImage}" />`;
 
+  const organization = { "@type": "Organization", name: SITE_NAME, url: baseUrl };
   const schemaMarkup = JSON.stringify(
-    normKey === "home"
+    isHome
       ? {
           "@context": "https://schema.org",
-          "@type": "Event",
-          name: "Bharat Organic Expo 2027",
+          "@type": "MedicalClinic",
+          name: SITE_NAME,
           description: metaDescription,
           url: fullUrl,
-          startDate: "2027-02-19T09:00:00+05:30",
-          endDate: "2027-02-21T18:00:00+05:30",
-          eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
-          eventStatus: "https://schema.org/EventScheduled",
-          location: {
-            "@type": "Place",
-            name: "Pragati Maidan",
-            address: {
-              "@type": "PostalAddress",
-              addressLocality: "New Delhi",
-              addressCountry: "IN",
-            },
-          },
-          organizer: {
-            "@type": "Organization",
-            name: "Namo Gange Wellness Pvt. Ltd.",
-            url: baseUrl,
-          },
-          image: [ogImage],
+          image: ogImage,
+          medicalSpecialty: "Ayurveda",
         }
       : {
           "@context": "https://schema.org",
@@ -88,11 +85,8 @@ export function generateSeoDefaults(
           name: metaTitle,
           description: metaDescription,
           url: fullUrl,
-          publisher: {
-            "@type": "Organization",
-            name: "Bharat Organic Expo 2027",
-            url: baseUrl,
-          },
+          isPartOf: { "@type": "WebSite", name: SITE_NAME, url: baseUrl },
+          publisher: organization,
         },
     null,
     2
@@ -148,11 +142,11 @@ export const seoService = {
 
       // Convert domain if standard domain and envType is specified
       if (envType === "local") {
-        canonicalUrl = canonicalUrl.replace("https://bharatorganicexpo.com", LOCAL_BASE_URL);
-        canonicalTag = canonicalTag.replace("https://bharatorganicexpo.com", LOCAL_BASE_URL);
+        canonicalUrl = canonicalUrl.replace(LIVE_BASE_URL, LOCAL_BASE_URL);
+        canonicalTag = canonicalTag.replace(LIVE_BASE_URL, LOCAL_BASE_URL);
       } else if (envType === "live") {
-        canonicalUrl = canonicalUrl.replace(/http:\/\/(localhost|127\.0\.0\.1):3002/, LIVE_BASE_URL);
-        canonicalTag = canonicalTag.replace(/http:\/\/(localhost|127\.0\.0\.1):3002/, LIVE_BASE_URL);
+        canonicalUrl = canonicalUrl.replace(/http:\/\/(localhost|127\.0\.0\.1):\d+/, LIVE_BASE_URL);
+        canonicalTag = canonicalTag.replace(/http:\/\/(localhost|127\.0\.0\.1):\d+/, LIVE_BASE_URL);
       }
 
       return {
@@ -202,7 +196,13 @@ export const seoService = {
     return updated;
   },
 
-  autoGenerate(pageKey: string, envType: "local" | "live", title?: string, desc?: string) {
-    return generateSeoDefaults(pageKey, envType, title, desc);
+  autoGenerate(
+    pageKey: string,
+    envType: "local" | "live",
+    title?: string,
+    desc?: string,
+    options: { path?: string; ogImage?: string } = {}
+  ) {
+    return generateSeoDefaults(pageKey, envType, title, desc, options);
   },
 };
