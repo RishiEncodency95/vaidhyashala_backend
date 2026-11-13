@@ -192,10 +192,11 @@ export const contactPage: PageContentDefinition = {
       isActive: true,
       eyebrow: "Plan Your Visit",
       heading: "Plan your visit.",
-      description: "Here's what you need to know before coming to the clinic.",
+      description: "Here’s what you need to know before coming to the clinic.",
       note: "Please contact the clinic before visiting to confirm doctor availability.",
-      image: "/contct/c3.webp",
-      imageAlt: "Plan your visit - Here's what you need to know before coming to the clinic",
+      // Decorative leaf, bottom right of the panel (the panel itself is drawn by the website)
+      image: "/contct/plan-leaf.webp",
+      imageAlt: "",
       items: [
         { iconImage: "", title: "Clinic address", description: "[Confirmed clinic address]" },
         { iconImage: "", title: "Clinic timings", description: "Days and consultation hours to be confirmed." },
@@ -244,7 +245,7 @@ export const contactPage: PageContentDefinition = {
       heading: "Ready to plan your first visit?",
       subtitle: "Our team is here to answer your questions and help you take the next step.",
       buttonLabel: "Request an Appointment",
-      buttonLink: "/#appointment",
+      buttonLink: "/home#appointment",
       decorativeImage: "/cont.webp",
     },
   },
