@@ -5,7 +5,7 @@ import ApplicationEvent from "../../models/careers/ApplicationEvent.model";
 import { getHrSettingsDoc } from "./hrSettings.controller";
 import { sendHrForwardEmail } from "../../services/email.service";
 import { downloadFileBuffer } from "../files/files.controller";
-import { getEmailLogo, LOGO_CID, renderHrForwardEmail } from "../../services/templates/hrForwardEmail";
+import { renderHrForwardEmail } from "../../services/templates/hrForwardEmail";
 
 /**
  * Data for the admin "Applications & AI Response" screen: one flat row per candidate, from
@@ -101,6 +101,9 @@ export const getAdminApplicationsBoard = async (_req: Request, res: Response): P
           ? `${formatDate(app.hrUpdatedAt)}, ${formatTime(app.hrUpdatedAt)}${app.hrUpdatedBy ? ` by ${app.hrUpdatedBy}` : ""}`
           : "",
         whyInterested: text(app.whyInterested),
+        screeningAnswers: Array.isArray(app.screeningAnswers)
+          ? app.screeningAnswers.map((qa: any) => ({ question: text(qa?.question), answer: text(qa?.answer) }))
+          : [],
         notes: text(app.notes),
         hrForward: app.hrForward?.forwardedAt ? app.hrForward : null,
         appliedAt,
@@ -178,13 +181,11 @@ const buildForwardEmail = async (application: any, share: string[], note: string
   const score = Math.round(Number(analysis?.matchScore ?? 0)) || 0;
 
   const attachments: { filename: string; content: Buffer; cid?: string; contentType?: string }[] = [];
-  const logo = getEmailLogo();
-  if (logo) attachments.push({ filename: "bharat-organic-expo.png", content: logo, cid: LOGO_CID, contentType: "image/png" });
 
   const cvShared = share.includes("Uploaded CV (Resume)");
+  const cvUrl = text(candidate?.cv?.cloudinaryUrl);
   let cvFileName = "";
   if (cvShared) {
-    const cvUrl = text(candidate?.cv?.cloudinaryUrl);
     const file = cvUrl ? await downloadFileBuffer(cvUrl) : null;
     if (file) {
       cvFileName = text(candidate.cv.originalFileName) || cvUrl.split("/").pop() || "resume.pdf";
@@ -192,10 +193,16 @@ const buildForwardEmail = async (application: any, share: string[], note: string
     }
   }
 
+  // Only public links work inside an email (not server paths like /uploads/...)
+  const publicUrl = (u: string) => (/^https:\/\//i.test(u) ? u : "");
+  const result = aiResultFor(score);
+  const breakdown = analysis?.breakdown?.toObject ? analysis.breakdown.toObject() : analysis?.breakdown;
+
   const content = renderHrForwardEmail({
     applicationId: application.applicationId,
     forwardedBy,
     forwardedAt: application.hrUpdatedAt || new Date(),
+    appliedAt: application.submittedAt || application.createdAt || null,
     note,
     share,
     candidate: {
@@ -204,6 +211,7 @@ const buildForwardEmail = async (application: any, share: string[], note: string
       phone: text(candidate.verifiedPhone) || text(candidate.phone),
       location: text(candidate.location),
       linkedin: text(candidate.linkedin),
+      photoUrl: publicUrl(text(candidate.photo)),
       totalExperience: text(candidate.totalExperience),
       currentCompany: text(candidate.currentCompany),
       currentDesignation: text(candidate.currentDesignation),
@@ -216,22 +224,26 @@ const buildForwardEmail = async (application: any, share: string[], note: string
     job: {
       title: text(job.title) || "Unknown position",
       department: text(job.department),
-      screeningQuestions: strings(job.screeningQuestions),
     },
     analysis: {
       score,
-      result: aiResultFor(score),
+      // Same bands as the admin screen, so HR sees the result the admin saw
+      verdict: result === "Eligible" ? "ELIGIBLE" : result === "Partial Match" ? "PARTIAL" : "NOT_ELIGIBLE",
       summary: text(analysis.explanation),
       strengths: strings(analysis.strengths),
       gaps: strings(analysis.gaps),
+      breakdown: breakdown && typeof breakdown === "object"
+        ? Object.entries(breakdown).map(([key, area]: [string, any]) => ({ key, score: Number(area?.score) || 0 }))
+        : null,
     },
     whyInterested: text(application.whyInterested),
+    screeningAnswers: (application.screeningAnswers || []).map((x: any) => ({ question: text(x?.question), answer: text(x?.answer) })),
     cvFileName,
+    cvUrl: publicUrl(cvUrl),
     cvShared,
-    hasLogo: !!logo,
   });
 
-  return { ...content, attachments };
+  return { ...content, attachments: [...content.attachments, ...attachments] };
 };
 
 export const updateAdminApplicationHr = async (req: Request, res: Response): Promise<void> => {

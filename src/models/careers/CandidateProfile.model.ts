@@ -59,12 +59,13 @@ const CandidateProfileSchema: Schema = new Schema(
     currentCTC: { type: String },
     expectedCTC: { type: String },
     willingToRelocate: { type: Boolean, default: false },
+    // Empty when the job does not require a CV and the candidate applied without one
     cv: {
-      originalFileName: { type: String, required: true },
-      cloudinaryUrl: { type: String, required: true },
-      cloudinaryPublicId: { type: String, required: true },
-      fileType: { type: String, required: true },
-      fileSize: { type: Number, required: true },
+      originalFileName: { type: String },
+      cloudinaryUrl: { type: String },
+      cloudinaryPublicId: { type: String },
+      fileType: { type: String },
+      fileSize: { type: Number },
       rawText: { type: String },
     },
   },

@@ -9,6 +9,9 @@ import {
 import { extractTextFromCv } from "../../services/cvTextExtractor.service";
 import { extractPhotoFromCv } from "../../services/cvPhotoExtractor.service";
 import { runCvAnalysisPipeline } from "../../services/ai/ai.service";
+import { APPLICATION_STATUS_MESSAGE, jobApplicationStatus } from "./jobAvailability";
+
+const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export const uploadCv = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -91,6 +94,8 @@ export const uploadCv = async (req: Request, res: Response): Promise<void> => {
       data: {
         cvId: profile._id.toString(),
         candidateId: profile._id.toString(),
+        // The photo found in the CV, if any ("Candidate Photo Mandatory" only asks when there is none)
+        photo: profile.photo || "",
         fileName: uploadResult.originalFileName,
         url: uploadResult.url,
         publicId: uploadResult.publicId,
@@ -143,16 +148,56 @@ export const analyzeCv = async (req: Request, res: Response): Promise<void> => {
       job = await Job.findOne({ title: new RegExp(cleanTitle, "i") });
     }
 
-    if (!job) {
-      job = await Job.findOne({ status: "OPEN" });
-    }
-
-    if (!job) {
+    if (!job || job.status === "DRAFT") {
       res.status(404).json({
         success: false,
         message: "Job position not found.",
       });
       return;
+    }
+
+    // The job's admin settings decide whether this CV can be taken at all
+    const applicationStatus = jobApplicationStatus(job);
+    if (applicationStatus !== "OPEN") {
+      res.status(403).json({ success: false, message: APPLICATION_STATUS_MESSAGE[applicationStatus], applicationStatus });
+      return;
+    }
+
+    // "AI CV Screening" off: no score; the candidate goes straight on to the application form
+    if (job.aiCvScreening === false) {
+      res.status(200).json({
+        success: true,
+        message: "CV received. AI screening is not used for this position.",
+        data: { screening: false, candidateId: profile._id.toString(), jobId: job._id.toString() },
+      });
+      return;
+    }
+
+    // "Allow CV Replacement" off: the first screened CV for this job is final for that candidate.
+    // Matched on the email written in the CV, before spending an AI call on the new one.
+    if (job.allowCvReplacement === false) {
+      const email = profile.cv.rawText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)?.[0] || profile.email;
+      if (email) {
+        const sameCandidate = await CandidateProfile.find({
+          _id: { $ne: profile._id },
+          email: new RegExp(`^${escapeRegex(email)}$`, "i"),
+        }).select("_id");
+        const earlier = sameCandidate.length
+          ? await CvAnalysis.findOne({
+              jobId: job._id,
+              candidateId: { $in: sameCandidate.map((c) => c._id) },
+              status: "COMPLETED",
+            }).select("_id")
+          : null;
+        if (earlier) {
+          res.status(409).json({
+            success: false,
+            message: "You have already been screened for this position. This job does not allow replacing the CV.",
+            analysisId: earlier._id.toString(),
+          });
+          return;
+        }
+      }
     }
 
     // Create preliminary analysis record
@@ -176,6 +221,10 @@ export const analyzeCv = async (req: Request, res: Response): Promise<void> => {
       responsibilities: job.responsibilities,
       educationRequirements: job.educationRequirements,
       eligibilityThreshold: job.eligibilityThreshold,
+      partialMatchMin: job.partialMatchMin,
+      partialMatchMax: job.partialMatchMax,
+      allowFresherCandidates: job.allowFresherCandidates,
+      allowCurrentlyNotEmployed: job.allowCurrentlyNotEmployed,
     });
 
     // Update candidate profile with extracted non-hallucinated data if provided
@@ -213,6 +262,7 @@ export const analyzeCv = async (req: Request, res: Response): Promise<void> => {
     analysisDoc.matchScore = analysisResult.overallScore;
     analysisDoc.eligibilityThreshold = analysisResult.eligibilityThreshold;
     analysisDoc.eligible = analysisResult.eligible;
+    analysisDoc.verdict = analysisResult.verdict;
     analysisDoc.breakdown = analysisResult.breakdown;
     analysisDoc.matchedRequirements = analysisResult.matchedRequirements;
     analysisDoc.missingRequirements = analysisResult.missingRequirements;
@@ -235,6 +285,12 @@ export const analyzeCv = async (req: Request, res: Response): Promise<void> => {
         matchScore: analysisResult.overallScore,
         eligibilityThreshold: analysisResult.eligibilityThreshold,
         eligible: analysisResult.eligible,
+        verdict: analysisResult.verdict,
+        verdictRule: analysisResult.verdictRule,
+        showMatchScoreToCandidate: job.showMatchScoreToCandidate !== false,
+        showMatchBreakdown: job.showMatchBreakdown !== false,
+        allowCvReplacement: job.allowCvReplacement !== false,
+        ruleFailures: analysisResult.ruleFailures,
         breakdown: analysisResult.breakdown,
         matchedRequirements: analysisResult.matchedRequirements,
         missingRequirements: analysisResult.missingRequirements,

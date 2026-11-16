@@ -63,6 +63,8 @@ export interface IJob extends Document {
   /** Photo on the job's card on the website Careers page (empty = the website picks one) */
   image?: string;
   featuredJob: boolean;
+  /** LISTED: on the Careers page. UNLISTED: hidden there, but the job's own link still works */
+  websiteVisibility: "LISTED" | "UNLISTED";
   applicationOpenDate?: Date;
   applicationClosingDate?: Date;
   tags?: string[];
@@ -134,6 +136,7 @@ const JobSchema: Schema = new Schema(
 
     image: { type: String, trim: true, default: "" },
     featuredJob: { type: Boolean, default: false },
+    websiteVisibility: { type: String, enum: ["LISTED", "UNLISTED"], default: "LISTED" },
     applicationOpenDate: { type: Date },
     applicationClosingDate: { type: Date },
     tags: [{ type: String, trim: true }],

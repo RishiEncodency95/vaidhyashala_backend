@@ -29,6 +29,10 @@ export interface UnifiedAnalysisResult {
   overallScore: number;
   eligibilityThreshold: number;
   eligible: boolean;
+  /** ELIGIBLE / PARTIAL / NOT_ELIGIBLE, from the job's passing score and partial-match range */
+  verdict: CvVerdict;
+  /** The scores the verdict was decided with */
+  verdictRule: { eligibleFrom: number; partialFrom: number };
   breakdown: {
     relevantExperience: { score: number; evidence: string[] };
     skills: { score: number; matched: string[]; missing: string[] };
@@ -42,6 +46,8 @@ export interface UnifiedAnalysisResult {
   strengths: string[];
   gaps: string[];
   explanation: string;
+  /** The job's candidate rules this CV failed (fresher / not currently employed); each one makes it Not eligible */
+  ruleFailures: string[];
 }
 
 /**
@@ -101,6 +107,124 @@ const mergePhones = (...lists: (string | null | undefined)[][]): string[] => {
   return merged.slice(0, MAX_CV_PHONES);
 };
 
+export type CvVerdict = "ELIGIBLE" | "PARTIAL" | "NOT_ELIGIBLE";
+
+/** A CV showing less than this share of the job's required skills is at most a Partial match */
+export const MIN_SKILLS_FOR_ELIGIBLE = 50;
+
+type WorkPeriod = NonNullable<AIAnalysisOutput["workHistory"]>[number];
+
+/** "2024-03" -> a month number; "present" -> this month; null when it cannot be read */
+const monthNumber = (value: string | undefined, now: Date): number | null => {
+  if (!value) return null;
+  if (/present|current|till|now|ongoing/i.test(value)) return now.getFullYear() * 12 + now.getMonth();
+  const m = String(value).match(/^(\d{4})(?:-(\d{1,2}))?/);
+  if (!m) return null;
+  const month = m[2] ? Math.min(12, Math.max(1, Number(m[2]))) - 1 : 0;
+  return Number(m[1]) * 12 + month;
+};
+
+/** Months covered by these roles, counting overlapping periods (two jobs at once) only once */
+const monthsCovered = (roles: WorkPeriod[], now: Date): number => {
+  const spans = roles
+    .map((r) => [monthNumber(r.start, now), monthNumber(r.end || "present", now)] as const)
+    .filter((s): s is readonly [number, number] => s[0] !== null && s[1] !== null && s[1] >= s[0])
+    .map(([a, b]) => [a, Math.min(b, now.getFullYear() * 12 + now.getMonth())] as [number, number])
+    .sort((x, y) => x[0] - y[0]);
+  let total = 0;
+  let current: [number, number] | null = null;
+  for (const span of spans) {
+    if (current && span[0] <= current[1] + 1) current[1] = Math.max(current[1], span[1]);
+    else {
+      if (current) total += current[1] - current[0] + 1;
+      current = [...span];
+    }
+  }
+  if (current) total += current[1] - current[0] + 1;
+  return total;
+};
+
+const years = (months: number) => Math.round((months / 12) * 10) / 10;
+
+/** How much a role counts towards relevant experience: same work 1, a neighbouring function 0.5, else 0 */
+const relevance = (w: WorkPeriod) => {
+  const r = typeof w.relevant === "boolean" ? (w.relevant ? "yes" : "no") : String(w.relevant || "no").toLowerCase();
+  return r === "yes" ? 1 : r === "partial" ? 0.5 : 0;
+};
+
+/**
+ * Years of experience from the CV's work periods:
+ *   total     paid work, internships excluded (used for "Allow Fresher Candidates")
+ *   relevant  weighted by how close each role is to the job (same work 1, neighbouring 0.5); internships count half
+ * Overlapping roles of the same weight are counted once.
+ */
+export const experienceFromWork = (work: WorkPeriod[], now = new Date()) => {
+  const jobs = work.filter((w) => !w.internship);
+  const internships = work.filter((w) => w.internship);
+  const weighted = (roles: WorkPeriod[]) =>
+    monthsCovered(roles.filter((w) => relevance(w) === 1), now) + monthsCovered(roles.filter((w) => relevance(w) === 0.5), now) / 2;
+  // The same month never counts for more than a full month, even across several roles
+  const relevantMonths = Math.min(monthsCovered(work, now), weighted(jobs) + weighted(internships) / 2);
+  return {
+    total: years(monthsCovered(jobs, now)),
+    relevant: years(relevantMonths),
+  };
+};
+
+/**
+ * Experience score against the job's required range:
+ *   no minimum (freshers welcome)  100 with relevant experience, 75 without
+ *   at or above the minimum        100
+ *   below the minimum              25-85 in proportion (half the minimum = 55); none = 0
+ */
+export const experienceScore = (relevantYears: number, min: number): number => {
+  if (min <= 0) return relevantYears > 0 ? 100 : 75;
+  if (relevantYears >= min) return 100;
+  if (relevantYears <= 0) return 0;
+  return Math.round(25 + 60 * (relevantYears / min));
+};
+
+/** Skills score: each required skill counts 1 when shown in the CV, 0.5 when partly; out of all required skills */
+export const skillsFromCheck = (required: string[], check: NonNullable<AIAnalysisOutput["requiredSkillsCheck"]>) => {
+  const statusOf = (skill: string, i: number) => {
+    const byName = check.find((c) => String(c.skill || "").trim().toLowerCase() === skill.trim().toLowerCase());
+    return String((byName ?? check[i])?.status || "no").toLowerCase();
+  };
+  const matched: string[] = [];
+  const missing: string[] = [];
+  let points = 0;
+  required.forEach((skill, i) => {
+    const status = statusOf(skill, i);
+    if (status === "yes") {
+      points += 1;
+      matched.push(skill);
+    } else if (status === "partial") {
+      points += 0.5;
+      matched.push(`${skill} (partly)`);
+    } else missing.push(skill);
+  });
+  return { score: Math.round((100 * points) / required.length), matched, missing };
+};
+
+/**
+ * The screening decision, from the job's AI Matching Rules (Admin → Job → AI Matching Rules):
+ *   Eligible      score ≥ the passing score AND above the partial-match range
+ *   Partial match score ≥ the start of the partial-match range
+ *   Not eligible  anything lower
+ * With the defaults (passing 40, partial 50-69): Eligible 70+, Partial 50-69, Not eligible below 50.
+ */
+export const decideVerdict = (
+  score: number,
+  rules: { eligibilityThreshold?: number; partialMatchMin?: number; partialMatchMax?: number }
+): { verdict: CvVerdict; eligibleFrom: number; partialFrom: number } => {
+  const passing = rules.eligibilityThreshold ?? 40;
+  const partialMax = rules.partialMatchMax ?? 69;
+  const eligibleFrom = Math.max(passing, partialMax + 1);
+  const partialFrom = Math.min(rules.partialMatchMin ?? 50, eligibleFrom);
+  const verdict: CvVerdict = score >= eligibleFrom ? "ELIGIBLE" : score >= partialFrom ? "PARTIAL" : "NOT_ELIGIBLE";
+  return { verdict, eligibleFrom, partialFrom };
+};
+
 /**
  * Deterministic formula to calculate score strictly in code.
  * AI provides dimension scores (0-100), backend computes final matchScore.
@@ -120,13 +244,14 @@ export const calculateDeterministicScore = (evalObj: {
   const roleFit = Math.min(100, Math.max(0, evalObj.roleFit?.score || 0));
   const location = Math.min(100, Math.max(0, evalObj.location?.score || 0));
 
+  // Experience and skills decide most of the score
   const weightedScore =
-    exp * 0.25 +
-    skills * 0.20 +
+    exp * 0.30 +
+    skills * 0.30 +
     edu * 0.15 +
-    industry * 0.15 +
-    roleFit * 0.15 +
-    location * 0.10;
+    roleFit * 0.10 +
+    industry * 0.10 +
+    location * 0.05;
 
   return Math.round(weightedScore);
 };
@@ -144,6 +269,12 @@ export const runCvAnalysisPipeline = async (
     responsibilities: string[];
     educationRequirements?: string;
     eligibilityThreshold?: number;
+    partialMatchMin?: number;
+    partialMatchMax?: number;
+    /** Admin "Allow Fresher Candidates" */
+    allowFresherCandidates?: boolean;
+    /** Admin "Allow Currently Not Employed" */
+    allowCurrentlyNotEmployed?: boolean;
   }
 ): Promise<UnifiedAnalysisResult> => {
   let aiOutput: AIAnalysisOutput | null = null;
@@ -231,8 +362,8 @@ export const runCvAnalysisPipeline = async (
         evaluation: {
           relevantExperience: { score: heuristicScore, evidence: matchedReqs },
           skills: { score: Math.round(heuristicScore * 0.9), matched: jobDescription.skills.filter(s => lowerCv.includes(s.toLowerCase())), missing: [] },
-          education: { score: lowerCv.includes("mba") || lowerCv.includes("graduate") || lowerCv.includes("bachelor") ? 90 : 60, evidence: [] },
-          industryExperience: { score: lowerCv.includes("sales") || lowerCv.includes("exhibition") || lowerCv.includes("event") ? 80 : 40, evidence: [] },
+          education: { score: /(bams|md \(?ayurveda|ayurvedacharya|panchakarma|graduate|bachelor|diploma)/.test(lowerCv) ? 85 : 50, evidence: [] },
+          industryExperience: { score: /ayurved|panchakarma|ayush|wellness|clinic|hospital|healthcare/.test(lowerCv) ? 80 : 40, evidence: [] },
           roleFit: { score: heuristicScore, evidence: [] },
           location: { score: lowerCv.includes("delhi") || lowerCv.includes("noida") || lowerCv.includes("gurugram") ? 100 : 70, evidence: [] },
         },
@@ -263,10 +394,70 @@ export const runCvAnalysisPipeline = async (
     aiOutput.candidate.phone = candidatePhones[0];
   }
 
+  // Experience and skills come from the facts the AI read, worked out here (see the prompt)
+  const now = new Date();
+  if (Array.isArray(aiOutput.workHistory) && aiOutput.workHistory.length > 0) {
+    const exp = experienceFromWork(aiOutput.workHistory, now);
+    const min = Number(jobDescription.experienceMin) || 0;
+    const max = Number(jobDescription.experienceMax) || 0;
+    const required = max > min ? `${min}-${max}` : `${min}+`;
+    aiOutput.evaluation.relevantExperience = {
+      score: experienceScore(exp.relevant, min),
+      evidence: [
+        `About ${exp.relevant} year${exp.relevant === 1 ? "" : "s"} of relevant experience (required ${required} years)`,
+        ...(aiOutput.evaluation.relevantExperience?.evidence || []).slice(0, 2),
+      ],
+    };
+    aiOutput.totalExperienceYears = exp.total;
+    // The exact figure replaces the model's own (often wrong) date arithmetic in its text
+    const mentionsYears = (text: string) =>
+      (/\b(year|yr)s?\b/i.test(text) && /experience|fresher/i.test(text)) ||
+      /experience requirement|required experience|enough experience|minimum experience|\bfresher\b/i.test(text);
+    const withoutYears = (items?: string[]) => (items || []).filter((t) => !mentionsYears(String(t)));
+    const yearsText = `About ${exp.relevant} year${exp.relevant === 1 ? "" : "s"} of relevant experience`;
+    const meetsMin = exp.relevant >= min;
+    aiOutput.strengths = withoutYears(aiOutput.strengths);
+    aiOutput.gaps = withoutYears(aiOutput.gaps);
+    if (meetsMin) aiOutput.strengths.unshift(`${yearsText} (required ${required} years)`);
+    else aiOutput.gaps.unshift(`${yearsText}; this role needs at least ${min} year${min === 1 ? "" : "s"}`);
+    const sentences = String(aiOutput.explanation || "").match(/[^.!?]+[.!?]*/g) || [];
+    aiOutput.explanation = [
+      ...sentences.map((x) => x.trim()).filter((x) => x && !mentionsYears(x)),
+      `${yearsText} (the role asks for ${required} years)${meetsMin ? "." : ", which is below the minimum."}`,
+    ].join(" ");
+  }
+  const requiredSkills = (jobDescription.skills || []).filter(Boolean);
+  if (requiredSkills.length > 0 && Array.isArray(aiOutput.requiredSkillsCheck) && aiOutput.requiredSkillsCheck.length > 0) {
+    aiOutput.evaluation.skills = skillsFromCheck(requiredSkills, aiOutput.requiredSkillsCheck);
+  }
+
   // 3. Compute Deterministic Match Score
   const overallScore = calculateDeterministicScore(aiOutput.evaluation);
   const threshold = jobDescription.eligibilityThreshold ?? 40;
-  const eligible = overallScore >= threshold;
+  const decided = decideVerdict(overallScore, jobDescription);
+  const { eligibleFrom, partialFrom } = decided;
+
+  // The job's candidate rules from the admin: a CV that breaks one is Not eligible whatever its score.
+  // A rule is only applied when the CV clearly shows the fact (null = could not tell = not held against them).
+  const ruleFailures: string[] = [];
+  const years = aiOutput.totalExperienceYears;
+  if (jobDescription.allowFresherCandidates === false && typeof years === "number" && years < 1) {
+    ruleFailures.push("This position is not open to freshers: work experience is required.");
+  }
+  if (jobDescription.allowCurrentlyNotEmployed === false && aiOutput.currentlyEmployed === false) {
+    ruleFailures.push("This position is open only to candidates who are currently employed.");
+  }
+  // Most of the required skills must be there to be Eligible, however strong the rest of the CV is
+  const skillsScore = aiOutput.evaluation.skills?.score ?? 0;
+  const skillsGate = decided.verdict === "ELIGIBLE" && skillsScore < MIN_SKILLS_FOR_ELIGIBLE;
+  const verdict: CvVerdict = ruleFailures.length ? "NOT_ELIGIBLE" : skillsGate ? "PARTIAL" : decided.verdict;
+  if (skillsGate) {
+    aiOutput.gaps = [
+      `Only ${skillsScore}% of the required skills were found in your CV (at least ${MIN_SKILLS_FOR_ELIGIBLE}% is needed to be eligible).`,
+      ...(aiOutput.gaps || []),
+    ];
+  }
+  const eligible = verdict === "ELIGIBLE";
 
   return {
     provider,
@@ -293,6 +484,8 @@ export const runCvAnalysisPipeline = async (
     overallScore,
     eligibilityThreshold: threshold,
     eligible,
+    verdict,
+    verdictRule: { eligibleFrom, partialFrom },
     breakdown: {
       relevantExperience: {
         score: aiOutput.evaluation.relevantExperience?.score || 0,
@@ -328,8 +521,9 @@ export const runCvAnalysisPipeline = async (
     ),
     missingRequirements: aiOutput.missingRequirements || [],
     strengths: aiOutput.strengths || [],
-    gaps: aiOutput.gaps || [],
-    explanation: aiOutput.explanation || "CV analyzed successfully against job parameters.",
+    gaps: [...ruleFailures, ...(aiOutput.gaps || [])],
+    ruleFailures,
+    explanation: ruleFailures.length ? [...ruleFailures, aiOutput.explanation].filter(Boolean).join(" ") : aiOutput.explanation || "CV analyzed successfully against job parameters.",
   };
 };
 

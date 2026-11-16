@@ -1,5 +1,8 @@
 import rateLimit from "express-rate-limit";
 import { ApiError } from "../utils/ApiError";
+import { env } from "../config/env";
+
+const limitsOff = () => env.DISABLE_API_LIMITS;
 
 // Rate limiter for login endpoint — protect against brute-force DDoS
 export const loginLimiter = rateLimit({
@@ -52,6 +55,7 @@ export const chatLeadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10,
   message: new ApiError(429, "Too many attempts. Please try again later."),
+  skip: limitsOff,
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -60,6 +64,7 @@ export const chatHistoryLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10,
   message: new ApiError(429, "Too many attempts. Please try again later."),
+  skip: limitsOff,
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -82,6 +87,7 @@ export const nominationLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 10,
   message: new ApiError(429, "Too many nominations from this network. Please try again later."),
+  skip: limitsOff,
   // Only nominations that were saved count: fixing a validation mistake does not use up the limit
   skipFailedRequests: true,
   standardHeaders: true,
@@ -93,6 +99,7 @@ export const enquiryLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 15,
   message: new ApiError(429, "Too many enquiries from this network. Please try again later."),
+  skip: limitsOff,
   skipFailedRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
@@ -103,6 +110,7 @@ export const newsletterLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 20,
   message: new ApiError(429, "Too many attempts from this network. Please try again later."),
+  skip: limitsOff,
   standardHeaders: true,
   legacyHeaders: false,
 });

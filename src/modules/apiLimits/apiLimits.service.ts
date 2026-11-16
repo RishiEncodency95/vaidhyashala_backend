@@ -94,7 +94,7 @@ const blockedResponse = (res: Response, api: ProtectedApi, rule: ApiRule, blocke
 export const apiBlockGuard = async (req: Request, res: Response, next: NextFunction) => {
   const apiPath = req.originalUrl.split("?")[0].replace(/^\/api(\/v1)?/, "") || "/";
   const api = findProtectedApi(req.method, apiPath);
-  if (!api || isAdmin(req)) return next();
+  if (!api || env.DISABLE_API_LIMITS || isAdmin(req)) return next();
 
   try {
     const rule = (await getApiRules()).get(api.key);

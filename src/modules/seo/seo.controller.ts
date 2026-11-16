@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { geminiModel, openaiModel } from "../../services/ai/aiConfig";
 import { seoService } from "./seo.service";
 import {
   PAGE_INVENTORY,
@@ -17,7 +18,7 @@ async function callSeoLlm(provider: "openai" | "gemini", prompt: string): Promis
     const key = process.env.GEMINI_API_KEY;
     if (!key) return null;
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(key)}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel())}:generateContent?key=${encodeURIComponent(key)}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -55,7 +56,7 @@ async function callSeoLlm(provider: "openai" | "gemini", prompt: string): Promis
       Authorization: `Bearer ${key}`,
     },
     body: JSON.stringify({
-      model: "gpt-4o-mini",
+      model: openaiModel(),
       messages: [
         { role: "system", content: "You are an expert technical SEO crawler and audit engine. Output ONLY raw JSON." },
         { role: "user", content: prompt },
@@ -735,7 +736,7 @@ Ensure JSON is strictly valid without markdown wrapper.`;
               Authorization: `Bearer ${apiKey}`,
             },
             body: JSON.stringify({
-              model: "gpt-4o-mini",
+              model: openaiModel(),
               messages: [
                 { role: "system", content: "You are an expert technical SEO crawler and audit engine. Output ONLY raw JSON." },
                 { role: "user", content: prompt },
@@ -783,7 +784,7 @@ Ensure JSON is strictly valid without markdown wrapper.`;
         positiveSignals,
         items,
         generatedAt: new Date().toISOString(),
-        model: "gpt-4o-mini",
+        model: openaiModel(),
         provider: "openai",
         status: "completed",
         error: null,

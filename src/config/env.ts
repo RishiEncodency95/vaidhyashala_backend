@@ -25,6 +25,9 @@ const envSchema = z.object({
   // Website chatbot: comma-separated origins allowed to call /api/chat (empty = any)
   ALLOWED_ORIGINS: z.string().default(""),
 
+  // "true" switches off the per-IP API blocks and the website form rate limits (login/2FA and chatbot limits stay)
+  DISABLE_API_LIMITS: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+
   // Cloudinary
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
   CLOUDINARY_API_KEY: z.string().optional(),

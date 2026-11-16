@@ -23,6 +23,8 @@ export interface IApplication extends Document {
   scoreSnapshot: any;
   status: ApplicationStatus;
   whyInterested?: string;
+  /** The job's screening questions with the candidate's answers */
+  screeningAnswers?: { question: string; answer: string }[];
   notes?: string;
   submittedAt?: Date;
   hrStatus?: string;
@@ -67,6 +69,7 @@ const ApplicationSchema: Schema = new Schema(
       index: true,
     },
     whyInterested: { type: String },
+    screeningAnswers: [{ question: { type: String }, answer: { type: String }, _id: false }],
     notes: { type: String },
     submittedAt: { type: Date },
     // HR pipeline set from the admin "Applications & AI Response" screen. Kept separate from

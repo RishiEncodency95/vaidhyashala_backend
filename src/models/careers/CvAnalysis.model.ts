@@ -19,6 +19,7 @@ export interface ICvAnalysis extends Document {
   matchScore: number; // Deterministic calculation
   eligibilityThreshold: number;
   eligible: boolean;
+  verdict?: "ELIGIBLE" | "PARTIAL" | "NOT_ELIGIBLE";
   breakdown: ICvAnalysisBreakdown;
   matchedRequirements: string[];
   missingRequirements: string[];
@@ -46,6 +47,7 @@ const CvAnalysisSchema: Schema = new Schema(
     matchScore: { type: Number, default: 0 },
     eligibilityThreshold: { type: Number, default: 40 },
     eligible: { type: Boolean, default: false },
+    verdict: { type: String, enum: ["ELIGIBLE", "PARTIAL", "NOT_ELIGIBLE"] },
     breakdown: {
       relevantExperience: {
         score: { type: Number, default: 0 },

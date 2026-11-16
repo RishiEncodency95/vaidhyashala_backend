@@ -4,6 +4,10 @@ import Job from "../../models/careers/Job.model";
 import Application from "../../models/careers/Application.model";
 import { generateJobDescriptionDocx } from "./jobDoc.service";
 import { generateJobDescriptionWithAI } from "../../services/ai/jobDescription.service";
+import { jobApplicationStatus, listedJobsFilter } from "./jobAvailability";
+
+/** User text as a literal pattern, so search input can never be a slow or broken regex */
+const literal = (text: string) => new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
 
 const jobContextFingerprint = (job: any): string => {
   const context = {
@@ -139,14 +143,20 @@ export const generateJobDescription = async (req: Request, res: Response): Promi
 export const getJobs = async (req: Request, res: Response): Promise<void> => {
   try {
     const { search, department, location, type } = req.query;
-    const query: any = { status: "OPEN" };
+    // Only what the admin has published for the website (status, "Job Visibility", open/closing dates)
+    const query: any = listedJobsFilter();
 
     if (search) {
-      query.$or = [
-        { title: { $regex: String(search), $options: "i" } },
-        { department: { $regex: String(search), $options: "i" } },
-        { skills: { $in: [new RegExp(String(search), "i")] } },
-      ];
+      const pattern = literal(String(search).trim());
+      query.$and.push({
+        $or: [
+          { title: pattern },
+          { department: pattern },
+          { location: pattern },
+          { skills: pattern },
+          { tags: pattern },
+        ],
+      });
     }
 
     if (department && department !== "All") {
@@ -161,7 +171,8 @@ export const getJobs = async (req: Request, res: Response): Promise<void> => {
       query.employmentType = String(type);
     }
 
-    const jobs = await Job.find(query).sort({ publishedAt: -1, createdAt: -1 });
+    // Featured jobs first ("Show at top of career page")
+    const jobs = await Job.find(query).sort({ featuredJob: -1, publishedAt: -1, createdAt: -1 });
 
     res.status(200).json({
       success: true,
@@ -188,7 +199,8 @@ export const getJobBySlug = async (req: Request, res: Response): Promise<void> =
       job = await Job.findById(targetSlug);
     }
 
-    if (!job) {
+    // Drafts are not public; closed or unlisted jobs still open from their link, marked as such
+    if (!job || job.status === "DRAFT") {
       res.status(404).json({
         success: false,
         message: "Job position not found",
@@ -196,12 +208,11 @@ export const getJobBySlug = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    job.views = (job.views || 0) + 1;
-    await job.save();
+    await Job.updateOne({ _id: job._id }, { $inc: { views: 1 } });
 
     res.status(200).json({
       success: true,
-      data: job,
+      data: { ...job.toObject(), applicationStatus: jobApplicationStatus(job) },
     });
   } catch (error) {
     res.status(500).json({

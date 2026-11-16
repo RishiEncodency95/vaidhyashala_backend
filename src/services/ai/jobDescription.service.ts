@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import { COMPANY_CONTEXT, generateJson } from "./aiConfig";
 
 export interface JobBasicInfo {
   title: string;
@@ -65,13 +65,6 @@ const capBulletsToChars = (bullets: string[], maxChars: number): string[] => {
 };
 
 export const generateJobDescriptionWithAI = async (info: JobBasicInfo): Promise<GeneratedJobContent> => {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
-  }
-
-  const openai = new OpenAI({ apiKey, timeout: 25_000, maxRetries: 1 });
-
   const ctcLine =
     info.ctcMin != null || info.ctcMax != null
       ? `${info.ctcMin ?? "?"} - ${info.ctcMax ?? "?"} (${info.salaryType || "CTC"})${
@@ -79,14 +72,14 @@ export const generateJobDescriptionWithAI = async (info: JobBasicInfo): Promise<
         }`
       : "Not specified";
 
-  const prompt = `You are an expert HR recruiter writing a job posting for Bharat Organic Expo 2027 (an organic industry trade expo & conference company in India).
+  const prompt = `You are an expert HR recruiter writing a job posting for ${COMPANY_CONTEXT}
 
 Using ONLY the job details below, write the job posting content. Do not invent facts (like a specific product or client) not implied by the details given — write in a professional, factual, recruiting tone.
 
 JOB DETAILS:
 - Job Title: ${info.title}
 - Designation: ${info.designation || "Not specified"}
-- Company: ${info.company || "Bharat Organic Expo"}
+- Company: ${info.company || "Vaidhyashala"}
 - Project / Event: ${info.projectEvent || "Not specified"}
 - Department: ${info.department}
 - Job Code / Reference ID: ${info.jobCode || "Not specified"}
@@ -105,9 +98,10 @@ JOB DETAILS:
 
 ROLE-ALIGNMENT RULES (highest priority):
 - Job Title, Designation and Department define the job function. Project/Event and industry fields only provide business context.
-- Never turn a support/function role into an event-operations role merely because the company runs an expo or event.
-- For HR / Human Resources / People roles, KRAs and KPIs must cover role-relevant areas such as talent acquisition, employee relations, performance management, retention, HR compliance, workforce records or learning and development as appropriate to the seniority. Do not use venue, vendor, logistics, exhibitor, setup or event-delivery metrics unless the title/designation/department explicitly makes those duties part of the role.
-- Every KRA and KPI must be traceable to this exact role's function and seniority. Avoid generic event, sales or marketing measures when they are not supported by the Job Title, Designation or Department.
+- Never turn a support/function role (HR, accounts, marketing, front desk) into a clinical role merely because the company is an Ayurvedic clinic.
+- Clinical roles (doctors, therapists, nurses) must reflect patient care, safety, clinical documentation and the required qualification / registration.
+- For HR / Human Resources / People roles, KRAs and KPIs must cover role-relevant areas such as talent acquisition, employee relations, performance management, retention, HR compliance, workforce records or learning and development as appropriate to the seniority. Do not use patient-treatment or therapy metrics unless the title/designation/department explicitly makes those duties part of the role.
+- Every KRA and KPI must be traceable to this exact role's function and seniority. Avoid generic clinical, sales or marketing measures when they are not supported by the Job Title, Designation or Department.
 - Compensation, experience, workplace and employment details should influence seniority and scope, but must not change the core job function.
 
 STRICT OUTPUT RULES (violating these breaks the form — follow exactly):
@@ -118,34 +112,25 @@ traits) until you are near the ceiling, never invented facts, then stop.
 1. "opportunity": ONE sentence, TARGET 22-25 words (hard maximum 25 words, never less than 20). A compelling, detailed one-line summary of the role.
 2. "keyResponsibilities": 4-5 bullet points, detailed enough that their combined length (just the text, no bullet symbols) lands between 260-295 characters total — never under 250, never over 300.
 3. "whoCanApply": 3-4 bullet points describing the ideal candidate profile in enough detail that their combined length lands between 170-195 characters total — never under 150, never over 200.
-4. "requiredSkills": 5-6 short skill tags (2-4 words each, e.g. "B2B Sales", "CRM Tools").
+4. "requiredSkills": 5-6 short skill tags (2-4 words each, e.g. "Panchakarma Procedures", "Patient Counselling").
 5. "preferredSkills": 3-4 short skill tags, nice-to-have, distinct from requiredSkills.
-6. "targetIndustrySegments": 3-4 short industry/sector tags relevant to this role (e.g. "Organic Food & Beverages", "Events & Exhibitions").
-7. "specificExperience": ONE detailed phrase, targeting 250-295 characters (never over 300), e.g. "Direct exhibition / trade show sales experience preferred, ideally within the organic, wellness or events industry, with a proven record of closing large-scale B2B partnerships."
-8. "reportingTo": ONE realistic job title this role would report to (e.g. a "Business Head" reports to a "CEO" or "Director", a specialist reports to a department Head/Manager) — must be more senior than this role, specific to THIS role's function, not generic.
-9. "kras": 5-6 Key Result Areas SPECIFIC to this exact role's function (e.g. for an exhibitions/business-development role: things like "Exhibitor Acquisition", "Revenue Growth", "Partnership Development" — NOT generic marketing/campaign KRAs unless this genuinely is a marketing role). Each item: {"label": "short KRA name (2-4 words)", "result": "one-line expected result, under 90 characters"}.
+6. "targetIndustrySegments": 3-4 short industry/sector tags relevant to this role (e.g. "Ayurveda & AYUSH", "Wellness & Spa", "Hospitals & Clinics").
+7. "specificExperience": ONE detailed phrase, targeting 250-295 characters (never over 300), e.g. "Hands-on experience performing Panchakarma procedures such as Abhyanga, Shirodhara and Basti in an Ayurvedic hospital or clinic, with a record of safe patient care and clear treatment documentation."
+8. "reportingTo": ONE realistic job title this role would report to (e.g. a Panchakarma Therapist reports to the "Chief Ayurvedic Physician" or "Panchakarma In-charge", a front desk executive to the "Clinic Manager") — must be more senior than this role, specific to THIS role's function, not generic.
+9. "kras": 5-6 Key Result Areas SPECIFIC to this exact role's function (e.g. for a Panchakarma Therapist: "Therapy Delivery", "Patient Safety & Comfort", "Hygiene & Room Readiness" — NOT generic marketing/sales KRAs unless this genuinely is a marketing or sales role). Each item: {"label": "short KRA name (2-4 words)", "result": "one-line expected result, under 90 characters"}.
 10. "kpis": 5-8 Key Performance Indicators that measure the KRAs above, specific to this role's function. Each item: {"label": "short KPI name (2-4 words)", "measurement": "how it's measured, under 90 characters"}.
-11. "referenceIndustries": 3-6 industries a strong candidate for this role would likely come from (e.g. "B2B Events", "Exhibitions & Trade Shows", "FMCG Sales" — tailored to this role's function).
+11. "referenceIndustries": 3-6 industries a strong candidate for this role would likely come from (e.g. "Ayurvedic Hospitals", "Wellness Resorts & Spas", "AYUSH Clinics" — tailored to this role's function).
 12. "screeningQuestions": 6-8 short mandatory screening questions an HR screener would ask a candidate for THIS specific role (not generic) — end with "What is your current and expected CTC?" and "What is your notice period or earliest joining date?" as the last two.
 
 Return ONLY a strictly valid JSON object with EXACTLY these keys: opportunity (string), keyResponsibilities (string array), whoCanApply (string array), requiredSkills (string array), preferredSkills (string array), targetIndustrySegments (string array), specificExperience (string), reportingTo (string), kras (array of {label, result}), kpis (array of {label, measurement}), referenceIndustries (string array), screeningQuestions (string array).`;
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      { role: "system", content: "You are a precise, JSON-only HR job-posting writer. You always strictly respect word/character limits given to you." },
-      { role: "user", content: prompt },
-    ],
-    response_format: { type: "json_object" },
-    temperature: 0.2,
-  });
-
-  const content = completion.choices[0]?.message?.content;
-  if (!content) {
-    throw new Error("Empty response from OpenAI");
-  }
-
-  const parsed = JSON.parse(content) as Partial<GeneratedJobContent>;
+  // OpenAI (OPENAI_MODEL), or Gemini (GEMINI_MODEL) when OpenAI fails
+  const { json } = await generateJson(
+    "You are a precise, JSON-only HR job-posting writer. You always strictly respect word/character limits given to you.",
+    prompt,
+    0.2
+  );
+  const parsed = json as Partial<GeneratedJobContent>;
 
   const kras = Array.isArray(parsed.kras)
     ? parsed.kras
@@ -162,18 +147,18 @@ Return ONLY a strictly valid JSON object with EXACTLY these keys: opportunity (s
     : [];
 
   if (kras.length < 5 || kpis.length < 5) {
-    throw new Error("OpenAI returned incomplete role-specific KRA/KPI content");
+    throw new Error("The AI returned incomplete role-specific KRA/KPI content");
   }
 
   const roleIdentity = `${info.title} ${info.designation || ""} ${info.department}`.toLowerCase();
   const isHrRole = /human resources|\bhr\b|talent acquisition|employee relations|people operations|people ops|recruitment|recruiter/.test(roleIdentity);
   if (isHrRole) {
     const hrareaPattern = /talent|recruit|hiring|employee|performance|retention|people|workforce|compliance|training|learning|hr\b|grievance|engagement|payroll/;
-    const eventOpsPattern = /venue|vendor|logistics|exhibitor|event setup|on-site delivery|material movement/;
+    const eventOpsPattern = /therapy|treatment|patient care|panchakarma|clinical|diagnos/;
     const alignedKras = kras.filter((item) => hrareaPattern.test(`${item.label} ${item.result}`.toLowerCase())).length;
     const unrelatedEventKras = kras.filter((item) => eventOpsPattern.test(`${item.label} ${item.result}`.toLowerCase())).length;
     if (alignedKras < 3 || unrelatedEventKras > 1) {
-      throw new Error("OpenAI returned KRA content that does not match the HR role");
+      throw new Error("The AI returned KRA content that does not match the HR role");
     }
   }
 
