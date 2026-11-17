@@ -33,6 +33,8 @@ productsAdminRouter.get("/enquiries", canViewEnquiries, controller.listEnquiries
 productsAdminRouter.patch("/enquiries/:id", canReplyEnquiries, validateRequest(updateEnquirySchema), controller.updateEnquiry);
 productsAdminRouter.delete("/enquiries/:id", canReplyEnquiries, validateRequest(idParamSchema), controller.deleteEnquiry);
 
+productsAdminRouter.post("/import-defaults", canEdit, controller.importDefaultProducts);
+
 productsAdminRouter.get("/", canView, controller.listProducts);
 productsAdminRouter.get("/:id", canView, validateRequest(idParamSchema), controller.getProduct);
 productsAdminRouter.post("/", canEdit, validateRequest(createProductSchema), controller.createProduct);

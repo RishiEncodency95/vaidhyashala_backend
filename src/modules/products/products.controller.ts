@@ -56,6 +56,12 @@ export const deleteProduct = asyncHandler(async (req: Request, res: Response) =>
   revalidateWebsite();
   res.status(200).json(ApiResponse.ok("Product deleted", data));
 });
+/** Adds the website's built-in catalogue (only what is missing; admin edits are kept) */
+export const importDefaultProducts = asyncHandler(async (_req: Request, res: Response) => {
+  const data = await service.seedProducts();
+  revalidateWebsite();
+  res.status(200).json(ApiResponse.ok("Website products imported", data));
+});
 
 // Admin: enquiries
 export const listEnquiries = asyncHandler(async (req: Request, res: Response) => {

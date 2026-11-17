@@ -1,7 +1,9 @@
+import { productPageImage } from "./productImages";
+
 /**
  * Products page catalogue as it ships on the website today
  * (vds_frontend/src/components/products/ProductCatalog.tsx + ProductDetailModal defaults).
- * `category` is the category slug. Image paths are in the website's /public.
+ * `category` is the category slug. Images are the Cloudinary copies (see productImages.ts).
  */
 
 export const defaultProductCategories = [
@@ -25,7 +27,7 @@ export const defaultProducts = [
     productInfo: "Details of the available formulation and manufacturer will be shared by our clinic team.",
     directions: "Use as directed by your physician or as indicated on the pack label. Store in a cool, dry place away from direct sunlight.",
     usageNotes: "Use as directed by the product label or your treating doctor.",
-    image: "/product/vaidhyashala_product_page_images/01_ayurvedic_tablets.webp",
+    image: productPageImage("01_ayurvedic_tablets.webp"),
     imageAlt: "Ayurvedic Tablets",
     galleryImage1: "",
     galleryImage2: "",
@@ -43,7 +45,7 @@ export const defaultProducts = [
     productInfo: "Details of the available formulation and manufacturer will be shared by our clinic team.",
     directions: "Use as directed by your physician or as indicated on the pack label. Store in a cool, dry place away from direct sunlight.",
     usageNotes: "Use as directed by the product label or your treating doctor.",
-    image: "/product/vaidhyashala_product_page_images/02_ayurvedic_syrup.webp",
+    image: productPageImage("02_ayurvedic_syrup.webp"),
     imageAlt: "Ayurvedic Syrup",
     galleryImage1: "",
     galleryImage2: "",
@@ -61,7 +63,7 @@ export const defaultProducts = [
     productInfo: "Details of the available formulation and manufacturer will be shared by our clinic team.",
     directions: "Use as directed by your physician or as indicated on the pack label. Store in a cool, dry place away from direct sunlight.",
     usageNotes: "Use as directed by the product label or your treating doctor.",
-    image: "/product/vaidhyashala_product_page_images/03_herbal_capsules.webp",
+    image: productPageImage("03_herbal_capsules.webp"),
     imageAlt: "Herbal Capsules",
     galleryImage1: "",
     galleryImage2: "",
@@ -79,7 +81,7 @@ export const defaultProducts = [
     productInfo: "Details of the available formulation and manufacturer will be shared by our clinic team.",
     directions: "Use as directed by your physician or as indicated on the pack label. Store in a cool, dry place away from direct sunlight.",
     usageNotes: "Use as directed by the product label or your treating doctor.",
-    image: "/product/vaidhyashala_product_page_images/04_herbal_powder.webp",
+    image: productPageImage("04_herbal_powder.webp"),
     imageAlt: "Herbal Powder",
     galleryImage1: "",
     galleryImage2: "",
@@ -97,7 +99,7 @@ export const defaultProducts = [
     productInfo: "Details of the available formulation and manufacturer will be shared by our clinic team.",
     directions: "Use as directed by your physician or as indicated on the pack label. For external application only. Store in a cool, dry place away from direct sunlight.",
     usageNotes: "Use as directed by the product label or your treating doctor.\nFor external use only.",
-    image: "/product/vaidhyashala_product_page_images/05_ayurvedic_massage_oil.webp",
+    image: productPageImage("05_ayurvedic_massage_oil.webp"),
     imageAlt: "Ayurvedic Massage Oil",
     galleryImage1: "",
     galleryImage2: "",
@@ -115,7 +117,7 @@ export const defaultProducts = [
     productInfo: "Details of the available formulation and manufacturer will be shared by our clinic team.",
     directions: "Use as directed by your physician or as indicated on the pack label. For external application only. Store in a cool, dry place away from direct sunlight.",
     usageNotes: "Use as directed by the product label or your treating doctor.\nFor external use only.",
-    image: "/product/vaidhyashala_product_page_images/06_hair_care_oil.webp",
+    image: productPageImage("06_hair_care_oil.webp"),
     imageAlt: "Hair Care Oil",
     galleryImage1: "",
     galleryImage2: "",
@@ -133,7 +135,7 @@ export const defaultProducts = [
     productInfo: "Details of the available formulation and manufacturer will be shared by our clinic team.",
     directions: "Use as directed by your physician or as indicated on the pack label. For external application only. Store in a cool, dry place away from direct sunlight.",
     usageNotes: "Use as directed by the product label or your treating doctor.\nFor external use only.",
-    image: "/product/vaidhyashala_product_page_images/07_herbal_skin_care_oil.webp",
+    image: productPageImage("07_herbal_skin_care_oil.webp"),
     imageAlt: "Herbal Skin Care Oil",
     galleryImage1: "",
     galleryImage2: "",
@@ -151,7 +153,7 @@ export const defaultProducts = [
     productInfo: "Details of the available formulation and manufacturer will be shared by our clinic team.",
     directions: "Use as directed by your physician or as indicated on the pack label. For external application only. Store in a cool, dry place away from direct sunlight.",
     usageNotes: "Use as directed by the product label or your treating doctor.\nFor external use only.",
-    image: "/product/vaidhyashala_product_page_images/08_herbal_bath_powder.webp",
+    image: productPageImage("08_herbal_bath_powder.webp"),
     imageAlt: "Herbal Bath Powder",
     galleryImage1: "",
     galleryImage2: "",
@@ -169,7 +171,7 @@ export const defaultProducts = [
     productInfo: "Details of the available formulation and manufacturer will be shared by our clinic team.",
     directions: "Use as directed by your physician or as indicated on the pack label. For external application only. Store in a cool, dry place away from direct sunlight.",
     usageNotes: "Use as directed by the product label or your treating doctor.\nFor external use only.",
-    image: "/product/vaidhyashala_product_page_images/09_herbal_face_care.webp",
+    image: productPageImage("09_herbal_face_care.webp"),
     imageAlt: "Herbal Face Care",
     galleryImage1: "",
     galleryImage2: "",
@@ -187,7 +189,7 @@ export const defaultProducts = [
     productInfo: "Details of the available formulation and manufacturer will be shared by our clinic team.",
     directions: "Use as directed by your physician or as indicated on the pack label. For external application only. Store in a cool, dry place away from direct sunlight.",
     usageNotes: "Use as directed by the product label or your treating doctor.\nFor external use only.",
-    image: "/product/vaidhyashala_product_page_images/10_herbal_hair_cleanser.webp",
+    image: productPageImage("10_herbal_hair_cleanser.webp"),
     imageAlt: "Herbal Hair Cleanser",
     galleryImage1: "",
     galleryImage2: "",
@@ -205,7 +207,7 @@ export const defaultProducts = [
     productInfo: "Details of the available formulation and manufacturer will be shared by our clinic team.",
     directions: "Use as directed by your physician or as indicated on the pack label. Store in a cool, dry place away from direct sunlight.",
     usageNotes: "Use as directed by the product label or your treating doctor.",
-    image: "/product/vaidhyashala_product_page_images/11_herbal_tea.webp",
+    image: productPageImage("11_herbal_tea.webp"),
     imageAlt: "Herbal Tea",
     galleryImage1: "",
     galleryImage2: "",
@@ -223,7 +225,7 @@ export const defaultProducts = [
     productInfo: "Details of the available formulation and manufacturer will be shared by our clinic team.",
     directions: "Use as directed by your physician or as indicated on the pack label. Store in a cool, dry place away from direct sunlight.",
     usageNotes: "Use as directed by the product label or your treating doctor.",
-    image: "/product/vaidhyashala_product_page_images/12_wellness_essentials.webp",
+    image: productPageImage("12_wellness_essentials.webp"),
     imageAlt: "Wellness Essentials",
     galleryImage1: "",
     galleryImage2: "",

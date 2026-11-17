@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PageContentDefinition, list, required, section, text } from "../pageContent.types";
+import { productPageImage } from "../../products/productImages";
 
 const count = z.coerce.number().int().min(1).max(60);
 
@@ -119,7 +120,7 @@ export const productsPage: PageContentDefinition = {
       description: "Explore Ayurvedic preparations, therapy oils and wellness essentials. Ask our team about product details and availability.",
       buttonLabel: "Explore the Catalogue",
       buttonLink: "#catalogue",
-      image: "/product/vaidhyashala_product_page_images/13_product_page_hero.webp",
+      image: productPageImage("13_product_page_hero.webp"),
       imageAlt: "Ayurveda for your everyday care - Vaidhyashala product collection",
     },
     categoryFilter: {
@@ -157,11 +158,11 @@ export const productsPage: PageContentDefinition = {
       headingLine1: "Choose with the right",
       headingHighlight: "guidance.",
       description: "Our team can help with product information, availability and appropriate consultation.",
-      image: "/product/vaidhyashala_product_page_images/14_product_guidance_consultation.webp",
+      image: productPageImage("14_product_guidance_consultation.webp"),
       imageAlt: "Doctor consultation for Ayurvedic medicine",
       badgeTitle: "Ayurvedic Consultation",
       badgeSubtitle: "Qualified Ayurvedic Doctors & Practitioners",
-      pointsImage: "/product/vaidhyashala_product_page_images/pr1.webp",
+      pointsImage: productPageImage("pr1.webp"),
       pointsImageAlt: "Product information, Pack & availability, Doctor guidance",
       items: [
         { iconImage: "", title: "Product information", description: "Learn about product details and uses." },
@@ -231,7 +232,7 @@ export const productsPage: PageContentDefinition = {
     canonicalUrl: "/products",
     ogTitle: "Vaidhyashala Products — Ayurveda for your everyday care",
     ogDescription: "Ayurvedic preparations, therapy oils and wellness essentials.",
-    ogImage: "/product/vaidhyashala_product_page_images/13_product_page_hero.webp",
+    ogImage: productPageImage("13_product_page_hero.webp"),
     h1Tag: "Ayurveda for your everyday care.",
     breadcrumbName: "Products",
     robotsIndex: true,

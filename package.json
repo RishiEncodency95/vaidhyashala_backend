@@ -17,6 +17,7 @@
     "seed:testimonials": "tsx scripts/seed_testimonials.ts",
     "test:email": "tsx scripts/test_email.ts",
     "upload:email-assets": "tsx scripts/upload_email_assets.ts",
+    "upload:product-images": "tsx scripts/upload_product_images.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
