@@ -22,6 +22,7 @@ import chatbotRouter from "../modules/chatbot/chatbot.routes";
 import { home1AdminRouter, home1PublicRouter } from "../modules/home1/home1.routes";
 import { home2AdminRouter, home2PublicRouter } from "../modules/home2/home2.routes";
 import { pageContentAdminRouter, pageContentPublicRouter } from "../modules/pageContent/pageContent.routes";
+import { ordersAdminRouter, ordersPublicRouter } from "../modules/orders/orders.routes";
 import { productsAdminRouter, productsPublicRouter } from "../modules/products/products.routes";
 import { testimonialsAdminRouter, testimonialsPublicRouter } from "../modules/testimonials/testimonials.routes";
 
@@ -78,6 +79,8 @@ router.use("/website/pages", pageContentPublicRouter);
 // Products page catalogue + enquiries (the page sections themselves are in /cms/pages/products)
 router.use("/cms/products", productsAdminRouter);
 router.use("/website/products", productsPublicRouter);
+router.use("/website/orders", ordersPublicRouter);
+router.use("/cms/orders", ordersAdminRouter);
 
 // Patient Testimonials cards + patient feedback (page texts are in /cms/pages/testimonials)
 router.use("/cms/testimonials", testimonialsAdminRouter);

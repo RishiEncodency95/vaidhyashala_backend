@@ -28,6 +28,8 @@ const productBody = z.object({
   productType: text(120).optional(),
   packOptions: text(300).optional(),
   availability: text(200).optional(),
+  price: z.number().min(0).max(10000000).optional(),
+  mrp: z.number().min(0).max(10000000).optional(),
   productInfo: text(3000).optional(),
   directions: text(3000).optional(),
   usageNotes: text(1000).optional(),

@@ -12,6 +12,10 @@ export interface IProduct extends Document {
   productType: string;
   packOptions: string;
   availability: string;
+  /** Selling price in rupees (0 = not for sale online, "price on request") */
+  price: number;
+  /** Original price (MRP) in rupees; shown struck through when higher than price */
+  mrp: number;
   productInfo: string;
   directions: string;
   /** Lines of the info callout in the modal, one per line */
@@ -38,6 +42,8 @@ const productSchema = new Schema<IProduct>(
     productType: str,
     packOptions: str,
     availability: str,
+    price: { type: Number, default: 0, min: 0 },
+    mrp: { type: Number, default: 0, min: 0 },
     productInfo: str,
     directions: str,
     usageNotes: str,

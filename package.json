@@ -18,7 +18,7 @@
     "test:email": "tsx scripts/test_email.ts",
     "upload:email-assets": "tsx scripts/upload_email_assets.ts",
     "upload:product-images": "tsx scripts/upload_product_images.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
@@ -68,6 +68,7 @@
     "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
     "tsx": "^4.23.13",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^3.2.4"
   }
 }
