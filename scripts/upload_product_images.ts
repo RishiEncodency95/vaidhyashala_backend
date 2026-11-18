@@ -15,7 +15,7 @@ import { WEBSITE_IMAGE_DIR } from "../src/modules/products/productImages";
 //   npm run upload:product-images
 const DIR = path.resolve(__dirname, "../assets/products");
 const FOLDER = "vedhshala/products";
-const PRODUCT_IMAGE_FIELDS = ["image", "galleryImage1", "galleryImage2"] as const;
+const PRODUCT_IMAGE_FIELDS = ["image", "galleryImage1", "galleryImage2", "galleryImage3"] as const;
 
 /** Every string in a page's content equal to a website copy, replaced by its Cloudinary URL */
 const replaceIn = (value: unknown, byPath: Map<string, string>): { value: unknown; changed: number } => {

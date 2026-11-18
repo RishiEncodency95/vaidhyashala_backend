@@ -31,6 +31,7 @@ export const defaultProducts = [
     imageAlt: "Ayurvedic Tablets",
     galleryImage1: "",
     galleryImage2: "",
+    galleryImage3: "",
     order: 1
   },
   {
@@ -49,6 +50,7 @@ export const defaultProducts = [
     imageAlt: "Ayurvedic Syrup",
     galleryImage1: "",
     galleryImage2: "",
+    galleryImage3: "",
     order: 2
   },
   {
@@ -67,6 +69,7 @@ export const defaultProducts = [
     imageAlt: "Herbal Capsules",
     galleryImage1: "",
     galleryImage2: "",
+    galleryImage3: "",
     order: 3
   },
   {
@@ -85,6 +88,7 @@ export const defaultProducts = [
     imageAlt: "Herbal Powder",
     galleryImage1: "",
     galleryImage2: "",
+    galleryImage3: "",
     order: 4
   },
   {
@@ -103,6 +107,7 @@ export const defaultProducts = [
     imageAlt: "Ayurvedic Massage Oil",
     galleryImage1: "",
     galleryImage2: "",
+    galleryImage3: "",
     order: 5
   },
   {
@@ -121,6 +126,7 @@ export const defaultProducts = [
     imageAlt: "Hair Care Oil",
     galleryImage1: "",
     galleryImage2: "",
+    galleryImage3: "",
     order: 6
   },
   {
@@ -139,6 +145,7 @@ export const defaultProducts = [
     imageAlt: "Herbal Skin Care Oil",
     galleryImage1: "",
     galleryImage2: "",
+    galleryImage3: "",
     order: 7
   },
   {
@@ -157,6 +164,7 @@ export const defaultProducts = [
     imageAlt: "Herbal Bath Powder",
     galleryImage1: "",
     galleryImage2: "",
+    galleryImage3: "",
     order: 8
   },
   {
@@ -175,6 +183,7 @@ export const defaultProducts = [
     imageAlt: "Herbal Face Care",
     galleryImage1: "",
     galleryImage2: "",
+    galleryImage3: "",
     order: 9
   },
   {
@@ -193,6 +202,7 @@ export const defaultProducts = [
     imageAlt: "Herbal Hair Cleanser",
     galleryImage1: "",
     galleryImage2: "",
+    galleryImage3: "",
     order: 10
   },
   {
@@ -211,6 +221,7 @@ export const defaultProducts = [
     imageAlt: "Herbal Tea",
     galleryImage1: "",
     galleryImage2: "",
+    galleryImage3: "",
     order: 11
   },
   {
@@ -229,6 +240,7 @@ export const defaultProducts = [
     imageAlt: "Wellness Essentials",
     galleryImage1: "",
     galleryImage2: "",
+    galleryImage3: "",
     order: 12
   }
 ];

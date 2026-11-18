@@ -24,6 +24,7 @@ export interface IProduct extends Document {
   imageAlt: string;
   galleryImage1: string;
   galleryImage2: string;
+  galleryImage3: string;
   isActive: boolean;
   order: number;
   createdAt: Date;
@@ -51,6 +52,7 @@ const productSchema = new Schema<IProduct>(
     imageAlt: str,
     galleryImage1: str,
     galleryImage2: str,
+    galleryImage3: str,
     isActive: { type: Boolean, default: true, index: true },
     order: { type: Number, default: 0 },
   },
