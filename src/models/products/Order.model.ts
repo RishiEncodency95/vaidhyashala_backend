@@ -18,6 +18,8 @@ export interface IOrder extends Document {
   customer: { name: string; mobile: string; email: string };
   address: { line1: string; line2: string; city: string; state: string; pincode: string };
   items: IOrderItem[];
+  /** Customer's delivery instructions */
+  notes: string;
   subtotal: number;
   discount: number;
   total: number;
@@ -38,6 +40,7 @@ const orderSchema = new Schema<IOrder>(
     orderNumber: { type: String, required: true, unique: true },
     customer: { name: str, mobile: str, email: str },
     address: { line1: str, line2: str, city: str, state: str, pincode: str },
+    notes: str,
     items: [
       {
         product: { type: Schema.Types.ObjectId, ref: "Product", required: true },

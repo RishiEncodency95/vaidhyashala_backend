@@ -18,6 +18,8 @@ export const createOrderSchema = z.object({
         state: text(100).min(1, "Please enter your state"),
         pincode: z.string().trim().regex(/^\d{6}$/, "Pincode must be 6 digits"),
       }),
+      /** Customer's delivery instructions (optional) */
+      notes: text(500).optional(),
       // Only the product and how many: prices always come from the database
       items: z.array(z.object({ id: objectId, qty: z.number().int().min(1).max(20) })).min(1, "Your cart is empty").max(50),
     })

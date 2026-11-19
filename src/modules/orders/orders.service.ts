@@ -9,6 +9,7 @@ interface CreateOrderInput {
   customer: { name: string; mobile: string; email?: string };
   address: { line1: string; line2?: string; city: string; state: string; pincode: string };
   items: { id: string; qty: number }[];
+  notes?: string;
 }
 
 const money = (n: number) => Math.round(n * 100) / 100;
@@ -54,6 +55,7 @@ export const createOrder = async (input: CreateOrderInput) => {
     orderNumber: number,
     customer: { ...input.customer, email: input.customer.email ?? "" },
     address: { ...input.address, line2: input.address.line2 ?? "" },
+    notes: input.notes ?? "",
     items,
     subtotal,
     discount,
