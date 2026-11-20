@@ -5,7 +5,7 @@ import { validateRequest } from "../../middlewares/validate.middleware";
 import { enquiryLimiter } from "../../middlewares/rateLimiter.middleware";
 import { protect } from "../../middlewares/auth.middleware";
 import { requirePermission } from "../../middlewares/permission.middleware";
-import { createOrderSchema, orderIdSchema, updateOrderSchema, verifyPaymentSchema } from "./orders.schema";
+import { couponSchema, createOrderSchema, orderIdSchema, updateOrderSchema, verifyPaymentSchema } from "./orders.schema";
 import * as service from "./orders.service";
 
 /** Website: /api/website/orders — checkout and payment check */
@@ -21,10 +21,29 @@ ordersPublicRouter.post(
 );
 
 ordersPublicRouter.post(
+  "/coupon",
+  enquiryLimiter,
+  validateRequest(couponSchema),
+  asyncHandler(async (req, res) => {
+    res.status(200).json(ApiResponse.ok("Coupon applied", await service.quoteCoupon(req.body)));
+  }),
+);
+
+ordersPublicRouter.post(
   "/verify",
   validateRequest(verifyPaymentSchema),
   asyncHandler(async (req, res) => {
     res.status(200).json(ApiResponse.ok("Payment confirmed", await service.verifyPayment(req.body)));
+  }),
+);
+
+// Razorpay calls this directly: no rate limit, the signature is the check
+ordersPublicRouter.post(
+  "/webhook",
+  asyncHandler(async (req, res) => {
+    const raw = (req as typeof req & { rawBody?: Buffer }).rawBody;
+    const data = await service.handleWebhook(raw, req.get("x-razorpay-signature"));
+    res.status(200).json(ApiResponse.ok("Webhook received", data));
   }),
 );
 

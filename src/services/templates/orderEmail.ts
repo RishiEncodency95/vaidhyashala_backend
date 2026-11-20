@@ -15,6 +15,8 @@ export interface OrderEmailData {
   items: { title: string; price: number; mrp: number; qty: number }[];
   subtotal: number;
   discount: number;
+  couponCode?: string;
+  couponDiscount?: number;
   total: number;
   razorpayPaymentId?: string;
 }
@@ -49,6 +51,7 @@ const itemsTable = (d: OrderEmailData) => {
       ${rows}
       ${line("M.R.P. total", rupees(d.subtotal + d.discount))}
       ${d.discount > 0 ? line("Discount", `&minus; ${rupees(d.discount)}`, `font:600 14px ${FONT};color:${C.green};`) : ""}
+      ${d.couponDiscount ? line(`Coupon (${esc(d.couponCode || "")})`, `&minus; ${rupees(d.couponDiscount)}`, `font:600 14px ${FONT};color:${C.green};`) : ""}
       ${line("Total paid", rupees(d.total), `font:800 17px ${FONT};color:${C.dark};border-top:2px solid ${C.cardLine};padding-top:10px;`)}
     </table>`;
 };
@@ -100,6 +103,7 @@ export const renderOrderConfirmationEmail = (d: OrderEmailData) => {
     "",
     ...d.items.map((i) => `${i.title} x ${i.qty} = ${plainRupees(i.price * i.qty)}`),
     d.discount > 0 ? `Discount: -${plainRupees(d.discount)}` : "",
+    d.couponDiscount ? `Coupon (${d.couponCode}): -${plainRupees(d.couponDiscount)}` : "",
     `Total paid: ${plainRupees(d.total)}`,
     "",
     "Delivery address:",

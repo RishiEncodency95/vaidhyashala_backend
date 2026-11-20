@@ -20,7 +20,18 @@ export const createOrderSchema = z.object({
       }),
       /** Customer's delivery instructions (optional) */
       notes: text(500).optional(),
+      /** Coupon the customer applied; the server checks it again and works out the discount */
+      couponCode: text(30).optional(),
       // Only the product and how many: prices always come from the database
+      items: z.array(z.object({ id: objectId, qty: z.number().int().min(1).max(20) })).min(1, "Your cart is empty").max(50),
+    })
+    .strict(),
+});
+
+export const couponSchema = z.object({
+  body: z
+    .object({
+      code: text(30).min(1, "Please enter a coupon code"),
       items: z.array(z.object({ id: objectId, qty: z.number().int().min(1).max(20) })).min(1, "Your cart is empty").max(50),
     })
     .strict(),

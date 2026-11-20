@@ -21,7 +21,11 @@ export interface IOrder extends Document {
   /** Customer's delivery instructions */
   notes: string;
   subtotal: number;
+  /** Product discounts (M.R.P. − price) */
   discount: number;
+  /** Coupon the customer used ("" = none) and what it took off the subtotal */
+  couponCode: string;
+  couponDiscount: number;
   total: number;
   paymentStatus: PaymentStatus;
   razorpayOrderId?: string;
@@ -54,6 +58,8 @@ const orderSchema = new Schema<IOrder>(
     ],
     subtotal: { type: Number, required: true },
     discount: { type: Number, default: 0 },
+    couponCode: str,
+    couponDiscount: { type: Number, default: 0 },
     total: { type: Number, required: true },
     paymentStatus: { type: String, enum: ["pending", "paid", "failed"], default: "pending", index: true },
     razorpayOrderId: { type: String, index: true },

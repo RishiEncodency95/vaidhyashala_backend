@@ -40,6 +40,13 @@ vi.mock("../src/models/products/Order.model", () => {
         return doc;
       },
       findById: async (id: string) => h.orders.get(id) ?? null,
+      findOne: async (q: { razorpayOrderId: string }) => [...h.orders.values()].find((o) => o.razorpayOrderId === q.razorpayOrderId) ?? null,
+      findOneAndUpdate: async (q: { _id: string; paymentStatus: { $ne: string } }, patch: Record<string, unknown>) => {
+        const doc = h.orders.get(q._id);
+        if (!doc || doc.paymentStatus === q.paymentStatus.$ne) return null;
+        Object.assign(doc, patch);
+        return doc;
+      },
       findByIdAndUpdate: async (id: string, patch: Record<string, unknown>) => {
         const doc = h.orders.get(id);
         if (doc) Object.assign(doc, patch);
@@ -49,7 +56,7 @@ vi.mock("../src/models/products/Order.model", () => {
   };
 });
 
-import { createOrder, verifyPayment } from "../src/modules/orders/orders.service";
+import { createOrder, handleWebhook, quoteCoupon, verifyPayment } from "../src/modules/orders/orders.service";
 
 const P1 = "6ad1afbd55cbafe58ac0a94f";
 const P2 = "6ad1afbd55cbafe58ac0a950";
@@ -126,6 +133,27 @@ describe("createOrder", () => {
   });
 });
 
+describe("coupons", () => {
+  it("quotes WELLNESS10 as 10% off the database subtotal", async () => {
+    const q = await quoteCoupon({ code: " wellness10 ", items: [{ id: P1, qty: 2 }, { id: P2, qty: 1 }] });
+    expect(q).toEqual({ code: "WELLNESS10", discount: 110, subtotal: 1100, total: 990 });
+  });
+
+  it("charges the discounted total on Razorpay and saves the coupon on the order", async () => {
+    const res = await createOrder({ customer, address, items: [{ id: P1, qty: 2 }, { id: P2, qty: 1 }], couponCode: "WELLNESS10" });
+    expect(res.total).toBe(990);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).amount).toBe(99000);
+    const saved = h.orders.get(res.orderId)!;
+    expect(saved).toMatchObject({ subtotal: 1100, couponCode: "WELLNESS10", couponDiscount: 110, total: 990 });
+  });
+
+  it("refuses an unknown code before any payment is opened", async () => {
+    await expect(quoteCoupon({ code: "FREE100", items: [{ id: P1, qty: 1 }] })).rejects.toThrow(/not valid/);
+    await expect(createOrder({ customer, address, items: [{ id: P1, qty: 1 }], couponCode: "FREE100" })).rejects.toThrow(/not valid/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("verifyPayment", () => {
   const placeOrder = () => createOrder({ customer, address, items: [{ id: P1, qty: 1 }] });
 
@@ -165,5 +193,51 @@ describe("verifyPayment", () => {
     await verifyPayment(body);
     await verifyPayment(body);
     expect(h.sendOrderEmails).toHaveBeenCalledOnce();
+  });
+});
+
+describe("handleWebhook", () => {
+  const hook = (body: unknown, secret = "whsec_test") => {
+    const raw = Buffer.from(JSON.stringify(body));
+    return { raw, sig: crypto.createHmac("sha256", secret).update(raw).digest("hex") };
+  };
+  const captured = (amount: number, orderId = "order_rzp_1") => ({
+    event: "payment.captured",
+    payload: { payment: { entity: { id: "pay_w1", order_id: orderId, amount } } },
+  });
+
+  beforeEach(() => {
+    h.env.RAZORPAY_WEBHOOK_SECRET = "whsec_test";
+  });
+
+  it("marks the order paid when the customer closed the tab before the site confirmed", async () => {
+    const { orderId } = await createOrder({ customer, address, items: [{ id: P1, qty: 1 }] });
+    const { raw, sig } = hook(captured(45000));
+    expect(await handleWebhook(raw, sig)).toEqual({ handled: true });
+    expect(h.orders.get(orderId)).toMatchObject({ paymentStatus: "paid", status: "confirmed", razorpayPaymentId: "pay_w1" });
+    expect(h.sendOrderEmails).toHaveBeenCalledOnce();
+  });
+
+  it("sends the emails only once when the browser and the webhook both confirm", async () => {
+    const { orderId } = await createOrder({ customer, address, items: [{ id: P1, qty: 1 }] });
+    await verifyPayment({ orderId, razorpay_order_id: "order_rzp_1", razorpay_payment_id: "pay_w1", razorpay_signature: sign("order_rzp_1", "pay_w1") });
+    const { raw, sig } = hook(captured(45000));
+    await handleWebhook(raw, sig);
+    expect(h.sendOrderEmails).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a wrong signature and ignores a different amount", async () => {
+    const { orderId } = await createOrder({ customer, address, items: [{ id: P1, qty: 1 }] });
+    const bad = hook(captured(45000), "other");
+    await expect(handleWebhook(bad.raw, bad.sig)).rejects.toThrow(/Invalid webhook signature/);
+    const cheap = hook(captured(100));
+    expect(await handleWebhook(cheap.raw, cheap.sig)).toEqual({ handled: false });
+    expect(h.orders.get(orderId)!.paymentStatus).toBe("pending");
+  });
+
+  it("refuses when no webhook secret is set", async () => {
+    h.env.RAZORPAY_WEBHOOK_SECRET = undefined;
+    const { raw, sig } = hook(captured(45000));
+    await expect(handleWebhook(raw, sig)).rejects.toMatchObject({ statusCode: 503 });
   });
 });

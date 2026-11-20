@@ -1,15 +1,17 @@
 import crypto from "crypto";
 import { Product } from "../../models/products/Product.model";
-import { Order } from "../../models/products/Order.model";
+import { Order, type IOrder } from "../../models/products/Order.model";
 import { ApiError } from "../../utils/ApiError";
 import { env } from "../../config/env";
 import { sendOrderEmails } from "../../services/orderEmail.service";
+import { applyCoupon } from "./coupons";
 
 interface CreateOrderInput {
   customer: { name: string; mobile: string; email?: string };
   address: { line1: string; line2?: string; city: string; state: string; pincode: string };
   items: { id: string; qty: number }[];
   notes?: string;
+  couponCode?: string;
 }
 
 const money = (n: number) => Math.round(n * 100) / 100;
@@ -25,13 +27,11 @@ const keys = () => {
 
 const orderNumber = () => `VDS-${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
 
-/** Builds the order from the database's prices and opens a Razorpay payment for the total */
-export const createOrder = async (input: CreateOrderInput) => {
-  const { keyId, keySecret } = keys();
-
+/** The cart priced from the database (never from the browser) */
+const priceCart = async (lines: { id: string; qty: number }[]) => {
   // Same product twice in the list -> one line
   const qtyById = new Map<string, number>();
-  for (const i of input.items) qtyById.set(i.id, Math.min(20, (qtyById.get(i.id) ?? 0) + i.qty));
+  for (const i of lines) qtyById.set(i.id, Math.min(20, (qtyById.get(i.id) ?? 0) + i.qty));
 
   const products = await Product.find({ _id: { $in: [...qtyById.keys()] }, isActive: true }).lean();
   if (products.length !== qtyById.size) throw ApiError.badRequest("Some products in your cart are no longer available.");
@@ -49,6 +49,22 @@ export const createOrder = async (input: CreateOrderInput) => {
   });
   const subtotal = money(items.reduce((n, i) => n + i.price * i.qty, 0));
   const discount = money(items.reduce((n, i) => n + (i.mrp - i.price) * i.qty, 0));
+  return { items, subtotal, discount };
+};
+
+/** Checkout "Apply" button: what the coupon takes off this cart */
+export const quoteCoupon = async (input: { code: string; items: { id: string; qty: number }[] }) => {
+  const { subtotal } = await priceCart(input.items);
+  const coupon = applyCoupon(input.code, subtotal);
+  return { code: coupon.code, discount: coupon.discount, subtotal, total: money(subtotal - coupon.discount) };
+};
+
+/** Builds the order from the database's prices and opens a Razorpay payment for the total */
+export const createOrder = async (input: CreateOrderInput) => {
+  const { keyId, keySecret } = keys();
+  const { items, subtotal, discount } = await priceCart(input.items);
+  const coupon = input.couponCode?.trim() ? applyCoupon(input.couponCode, subtotal) : null;
+  const total = money(subtotal - (coupon?.discount ?? 0));
   const number = orderNumber();
 
   const order = await Order.create({
@@ -59,7 +75,9 @@ export const createOrder = async (input: CreateOrderInput) => {
     items,
     subtotal,
     discount,
-    total: subtotal,
+    couponCode: coupon?.code ?? "",
+    couponDiscount: coupon?.discount ?? 0,
+    total,
   });
 
   const res = await fetch("https://api.razorpay.com/v1/orders", {
@@ -68,7 +86,7 @@ export const createOrder = async (input: CreateOrderInput) => {
       "Content-Type": "application/json",
       Authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString("base64")}`,
     },
-    body: JSON.stringify({ amount: Math.round(subtotal * 100), currency: "INR", receipt: number }),
+    body: JSON.stringify({ amount: Math.round(total * 100), currency: "INR", receipt: number }),
   });
   if (!res.ok) {
     await Order.findByIdAndUpdate(order._id, { paymentStatus: "failed" });
@@ -81,9 +99,32 @@ export const createOrder = async (input: CreateOrderInput) => {
   return {
     orderId: String(order._id),
     orderNumber: number,
-    total: subtotal,
+    subtotal,
+    couponCode: coupon?.code ?? "",
+    couponDiscount: coupon?.discount ?? 0,
+    total,
     razorpay: { keyId, orderId: rz.id, amount: rz.amount, currency: rz.currency },
   };
+};
+
+const sameHex = (given: string, expected: string) => {
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
+
+/**
+ * Marks the order paid exactly once (the browser and the webhook can both report the same
+ * payment): only the call that actually flips it sends the confirmation emails.
+ */
+const markPaid = async (orderId: IOrder["_id"], paymentId: string) => {
+  const updated = await Order.findOneAndUpdate(
+    { _id: orderId, paymentStatus: { $ne: "paid" } },
+    { paymentStatus: "paid", status: "confirmed", razorpayPaymentId: paymentId },
+    { new: true },
+  );
+  if (updated) void sendOrderEmails(updated.toObject() as IOrder);
+  return updated;
 };
 
 /** Checks Razorpay's signature so only a real payment marks the order paid */
@@ -99,19 +140,42 @@ export const verifyPayment = async (input: {
   if (order.paymentStatus === "paid") return { orderNumber: order.orderNumber, total: order.total };
 
   const expected = crypto.createHmac("sha256", keySecret).update(`${input.razorpay_order_id}|${input.razorpay_payment_id}`).digest("hex");
-  const given = Buffer.from(input.razorpay_signature);
-  const want = Buffer.from(expected);
-  if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) {
+  if (!sameHex(input.razorpay_signature, expected)) {
     order.paymentStatus = "failed";
     await order.save();
     throw ApiError.badRequest("Payment could not be verified. If money was deducted, please contact the clinic.");
   }
-  order.paymentStatus = "paid";
-  order.status = "confirmed";
-  order.razorpayPaymentId = input.razorpay_payment_id;
-  await order.save();
-  void sendOrderEmails(order.toObject());
+  await markPaid(order._id, input.razorpay_payment_id);
   return { orderNumber: order.orderNumber, total: order.total };
+};
+
+/**
+ * Razorpay webhook (Dashboard → Webhooks, events "payment.captured" and "order.paid").
+ * Backup for when the customer pays but closes the tab before the site can confirm it.
+ * `raw` must be the exact request body: the signature is computed over those bytes.
+ */
+export const handleWebhook = async (raw: Buffer | undefined, signature: string | undefined) => {
+  const secret = env.RAZORPAY_WEBHOOK_SECRET;
+  if (!secret) throw new ApiError(503, "Razorpay webhook is not set up.");
+  if (!raw?.length || !signature) throw ApiError.badRequest("Missing webhook signature.");
+  const expected = crypto.createHmac("sha256", secret).update(raw).digest("hex");
+  if (!sameHex(signature, expected)) throw ApiError.badRequest("Invalid webhook signature.");
+
+  const event = JSON.parse(raw.toString("utf8")) as {
+    event?: string;
+    payload?: { payment?: { entity?: { id?: string; order_id?: string; amount?: number } }; order?: { entity?: { id?: string } } };
+  };
+  if (event.event !== "payment.captured" && event.event !== "order.paid") return { handled: false };
+
+  const payment = event.payload?.payment?.entity;
+  const razorpayOrderId = payment?.order_id || event.payload?.order?.entity?.id;
+  if (!razorpayOrderId) return { handled: false };
+  const order = await Order.findOne({ razorpayOrderId });
+  if (!order) return { handled: false };
+  // The amount paid must be this order's total
+  if (payment?.amount !== undefined && payment.amount !== Math.round(order.total * 100)) return { handled: false };
+  await markPaid(order._id, payment?.id ?? "");
+  return { handled: true };
 };
 
 // ─── Admin ───────────────────────────────────────────────────────────────────

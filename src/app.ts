@@ -70,7 +70,15 @@ app.use((req, res, next) => {
 
 // ─── General Middlewares ──────────────────────────────────────────────────────
 
-app.use(express.json({ limit: "50mb" }));
+app.use(
+  express.json({
+    limit: "50mb",
+    // Razorpay's webhook signature is computed over the exact bytes it sent
+    verify: (req, _res, buf) => {
+      if (req.url?.startsWith("/api/website/orders/webhook")) (req as typeof req & { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+    },
+  }),
+);
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cookieParser(env.COOKIE_SECRET));
 app.use(
