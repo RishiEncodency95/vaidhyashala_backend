@@ -38,6 +38,7 @@ const productBody = z.object({
   galleryImage1: text(1000).optional(),
   galleryImage2: text(1000).optional(),
   galleryImage3: text(1000).optional(),
+  video: text(1000).optional(),
   isActive: z.boolean().optional(),
   order: z.number().int().min(0).optional(),
 });

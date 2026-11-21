@@ -25,6 +25,8 @@ export interface IProduct extends Document {
   galleryImage1: string;
   galleryImage2: string;
   galleryImage3: string;
+  /** Product video: an uploaded file (mp4/webm) or a YouTube link. Shown after the pictures. */
+  video: string;
   isActive: boolean;
   order: number;
   createdAt: Date;
@@ -53,6 +55,7 @@ const productSchema = new Schema<IProduct>(
     galleryImage1: str,
     galleryImage2: str,
     galleryImage3: str,
+    video: str,
     isActive: { type: Boolean, default: true, index: true },
     order: { type: Number, default: 0 },
   },
