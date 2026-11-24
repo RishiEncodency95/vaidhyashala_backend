@@ -27,6 +27,21 @@ export interface IProduct extends Document {
   galleryImage3: string;
   /** Product video: an uploaded file (mp4/webm) or a YouTube link. Shown after the pictures. */
   video: string;
+  /** Usage guide 3 steps */
+  howToStep1: string;
+  howToStep2: string;
+  howToStep3: string;
+  /** Key ingredients: one per line, e.g. "Amla (Emblica officinalis)" */
+  keyIngredients: string;
+  /** Precautions: one per line */
+  precautions: string;
+  /** Product specifications */
+  netQuantity: string;
+  formulationType: string;
+  manufacturer: string;
+  shelfLife: string;
+  batchExpiry: string;
+  countryOfOrigin: string;
   isActive: boolean;
   order: number;
   createdAt: Date;
@@ -56,6 +71,17 @@ const productSchema = new Schema<IProduct>(
     galleryImage2: str,
     galleryImage3: str,
     video: str,
+    howToStep1: str,
+    howToStep2: str,
+    howToStep3: str,
+    keyIngredients: str,
+    precautions: str,
+    netQuantity: str,
+    formulationType: str,
+    manufacturer: str,
+    shelfLife: str,
+    batchExpiry: str,
+    countryOfOrigin: { type: String, trim: true, default: "India" },
     isActive: { type: Boolean, default: true, index: true },
     order: { type: Number, default: 0 },
   },

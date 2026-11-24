@@ -119,7 +119,11 @@ export const getProduct = async (id: string) => {
 };
 
 export const getPublicProductBySlug = async (slug: string) => {
-  const product = await Product.findOne({ slug: slug.toLowerCase(), isActive: true })
+  const isObjectId = /^[a-f\d]{24}$/i.test(slug);
+  const filter = isObjectId
+    ? { $or: [{ _id: slug }, { slug: slug.toLowerCase() }], isActive: true }
+    : { slug: slug.toLowerCase(), isActive: true };
+  const product = await Product.findOne(filter)
     .populate("category", "name slug isActive")
     .lean();
   const category = product?.category as unknown as { isActive?: boolean } | undefined;
