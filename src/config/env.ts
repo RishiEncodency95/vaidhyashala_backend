@@ -19,8 +19,22 @@ const envSchema = z.object({
 
   // AI Keys
   OPENAI_API_KEY: z.string().optional(),
-  OPENAI_MODEL: z.string().default("gpt-5.4-mini"),
+  OPENAI_MODEL: z.string().default("gpt-4o-mini"),
+  OPENAI_REALTIME_MODEL: z.string().default("gpt-realtime-mini"),
+  OPENAI_REALTIME_VOICE: z.string().default("coral"),
+  CHAT_CALL_MAX_MINUTES: z.string().default("10"),
+  CHAT_CALL_DAILY_MINUTES: z.string().default("240"),
+  CALL_ENGINE: z.string().default("realtime"),
   GEMINI_API_KEY: z.string().optional(),
+  SARVAM_API_KEY: z.string().optional(),
+  DEEPGRAM_API_KEY: z.string().optional(),
+  ELEVENLABS_API_KEY: z.string().optional(),
+
+  // Outbound Calling Agent (Twilio Programmable Voice)
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_PHONE_NUMBER: z.string().optional(),
+  PUBLIC_URL: z.string().optional(),
 
   // Website chatbot: comma-separated origins allowed to call /api/chat (empty = any)
   ALLOWED_ORIGINS: z.string().default(""),

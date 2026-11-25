@@ -222,7 +222,7 @@ const isPrivateHost = (host: string) =>
 const fetchPage = async (url: string) => {
   if (isPrivateHost(new URL(url).hostname)) throw new Error("Internal network addresses cannot be imported.");
   const res = await fetch(url, {
-    headers: { "User-Agent": "OrganicMitraBot/1.0 (+https://bharatorganicexpo.com)" },
+    headers: { "User-Agent": "VaidhyaMitraBot/1.0 (+https://vaidhyashala.com)" },
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`The page returned HTTP ${res.status}.`);
@@ -282,20 +282,64 @@ export const askBot = async (opts: {
   language?: string;
   history?: { role: "user" | "assistant"; content: string }[];
 }): Promise<{ text: string; found: boolean }> => {
-  const client = getOpenAI();
-  if (!client) throw new Error("OPENAI_API_KEY is not configured on the server.");
   const { ctx } = await getBotContext(opts.mode);
-  const model = env.OPENAI_MODEL;
   const languageHint =
     opts.language && opts.language !== "Auto" ? `\n\nReply in ${opts.language === "हिंदी" ? "Hindi" : opts.language}.` : "";
-  const response = await client.responses.create({
-    model,
-    instructions: buildInstructions(undefined, ctx) + languageHint,
-    input: [...(opts.history || []).slice(-10), { role: "user" as const, content: opts.question }],
-    max_output_tokens: 800,
-    ...(/^(gpt-5|o\d)/.test(model) ? { reasoning: { effort: "low" as const } } : {}),
-  });
-  const raw = response.output_text || "";
-  const found = !raw.includes(NO_ANSWER_MARKER);
-  return { text: raw.split(NO_ANSWER_MARKER).join("").trim(), found };
+  const instructions = buildInstructions(undefined, ctx) + languageHint;
+  const history = opts.history || [];
+
+  const client = getOpenAI();
+  if (client) {
+    try {
+      const model = env.OPENAI_MODEL;
+      const response = await client.responses.create({
+        model,
+        instructions,
+        input: [...history.slice(-10), { role: "user" as const, content: opts.question }],
+        max_output_tokens: 800,
+        ...(/^(gpt-5|o\d)/.test(model) ? { reasoning: { effort: "low" as const } } : {}),
+      });
+      const raw = response.output_text || "";
+      const found = !raw.includes(NO_ANSWER_MARKER);
+      return { text: raw.split(NO_ANSWER_MARKER).join("").trim(), found };
+    } catch (e: any) {
+      console.warn("OpenAI askBot failed, falling back to Gemini:", e.message);
+    }
+  }
+
+  // Fallback to Gemini
+  const geminiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+  if (geminiKey) {
+    const models = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-flash-latest"];
+    for (const m of models) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(geminiKey)}`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: instructions }] },
+            contents: [
+              ...history.slice(-10).map((h) => ({
+                role: h.role === "assistant" ? "model" : "user",
+                parts: [{ text: h.content }],
+              })),
+              { role: "user", parts: [{ text: opts.question }] },
+            ],
+            generationConfig: { maxOutputTokens: 800, temperature: 0.7 },
+          }),
+        });
+        if (res.ok) {
+          const body: any = await res.json();
+          const raw = body.candidates?.[0]?.content?.parts?.[0]?.text || "";
+          const found = !raw.includes(NO_ANSWER_MARKER);
+          return { text: raw.split(NO_ANSWER_MARKER).join("").trim(), found };
+        }
+      } catch (err: any) {
+        console.warn(`Gemini ${m} askBot failed:`, err.message);
+      }
+    }
+  }
+
+  throw new Error("Neither OpenAI nor Gemini could answer the request.");
 };

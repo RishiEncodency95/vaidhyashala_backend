@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { isValidObjectId } from "mongoose";
 import Chat from "../../models/chat/Chat.model";
+import ChatBlock from "../../models/chat/ChatBlock.model";
 import Otp from "../../models/contact/otp.model";
 import ContactEnquiry from "../../models/contact/contactEnquiry.model";
 import asyncHandler from "../../utils/asyncHandler";
@@ -10,7 +11,10 @@ import { logger } from "../../utils/logger";
 import { env } from "../../config/env";
 import { otpProofRequired } from "../../utils/otpProof";
 import { sendWhatsAppTemplate } from "../../services/whatsapp.service";
-import { buildInstructions, FALLBACK_REPLY, NO_ANSWER_MARKER } from "./chat.prompt";
+import { buildInstructions, FALLBACK_REPLY, NO_ANSWER_MARKER, KNOWLEDGE, CONTACT } from "./chat.prompt";
+import { CREATOR_ATTRIBUTION } from "./creatorGuard";
+import { callAvailable, openCall, endCall, isLive, callInstructions, isRealName } from "./chat.call";
+import { placeOutboundCall, type OutboundCallResult } from "./chat.outbound";
 import { getBotContext, getOpenAI, routingFor } from "../chatbot/chatbot.service";
 import { notifyAssignment, routeEnquiry } from "./enquiryRouting.service";
 import ChatbotConfig from "../../models/chat/ChatbotConfig.model";
@@ -19,12 +23,13 @@ import { toTenDigitMobile } from "./chat.schema";
 const HISTORY_LIMIT = 10;
 const WHATSAPP_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const DUPLICATE_ENQUIRY_MS = 24 * 60 * 60 * 1000;
-const CHATBOT_SERVICE = "Chatbot (Organic Mitra)";
-const NO_QUESTION_PREFIX = "Started a chat with Organic Mitra on";
+const CHATBOT_SERVICE = "Chatbot (Salu)";
+const NO_QUESTION_PREFIX = "Started a chat with Salu on";
 const DAY_MS = 24 * 60 * 60 * 1000;
+const STRIKES_TO_BLOCK = 3;
+const STRIKE_BLOCK_MS = 24 * 60 * 60 * 1000;
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 
 /** The visitor's IP and browser; a chat is saved as "Visitor <ip>" until the mobile number is verified */
 const visitorOf = (req: Request) => {
@@ -35,6 +40,38 @@ const visitorOf = (req: Request) => {
     visitor: { ip, userAgent: String(req.get("user-agent") || "").slice(0, 300) },
   };
 };
+
+const blockOf = async (ip: string) => {
+  const block = await ChatBlock.findOne({ ip });
+  if (!block) return null;
+  if (block.manual) return { reason: block.reason || "Blocked by team", manual: true, leftMs: null };
+  if (block.blockedUntil && block.blockedUntil.getTime() > Date.now()) {
+    return { reason: block.reason || "Temporary block", manual: false, leftMs: block.blockedUntil.getTime() - Date.now() };
+  }
+  return null;
+};
+
+// POST /api/chat/abuse — records abusive strikes, 3 strikes block the IP for 24 hours
+export const reportAbuse = asyncHandler(async (req: Request, res: Response) => {
+  const { visitor } = visitorOf(req);
+  const block = (await ChatBlock.findOne({ ip: visitor.ip })) || new ChatBlock({ ip: visitor.ip });
+  if (block.blockedUntil && block.blockedUntil.getTime() > Date.now()) {
+    res.status(200).json(ApiResponse.ok("Blocked", { blocked: true, blockedFor: block.manual ? null : block.blockedUntil.getTime() - Date.now(), strikes: STRIKES_TO_BLOCK }));
+    return;
+  }
+  block.strikes = (block.strikes || 0) + 1;
+  let blocked = false;
+  if (block.strikes >= STRIKES_TO_BLOCK) {
+    block.blockedUntil = new Date(Date.now() + STRIKE_BLOCK_MS);
+    block.manual = false;
+    block.reason = "Abusive messages";
+    block.strikes = 0;
+    blocked = true;
+    await Chat.updateMany({ "visitor.ip": visitor.ip }, { $set: { blocked: true } });
+  }
+  await block.save();
+  res.status(200).json(ApiResponse.ok(blocked ? "Blocked" : "Warning", { blocked, blockedFor: blocked ? STRIKE_BLOCK_MS : 0, strikes: block.strikes }));
+});
 
 // POST /api/chat/track — saves what a visitor does before the details form (topic / option
 // clicks, scripted replies, a waiting question) and the 👍 / 👎 feedback, under the visitor's IP
@@ -262,6 +299,14 @@ const RESUME_WITHIN_DAYS = 90;
 /** Messages sent back to show the earlier conversation */
 const RESTORE_MESSAGES = 40;
 
+const isKnownName = (name?: string | null): boolean => {
+  if (!name) return false;
+  const n = name.trim();
+  if (!n || n.length < 2) return false;
+  const lower = n.toLowerCase();
+  return lower !== "visitor" && lower !== "null" && lower !== "undefined" && lower !== "unknown";
+};
+
 // POST /api/chat/start — the name the visitor types first. The chat is saved under that name; if the
 // same IP chatted under the same name before (and that chat has no verified number from another
 // device), that chat continues and its messages are returned to show again.
@@ -269,38 +314,49 @@ export const startByName = asyncHandler(async (req: Request, res: Response) => {
   const sessionId = String(req.body.sessionId).trim();
   const pageUrl = String(req.body.pageUrl || "").slice(0, 500);
   const name = String(req.body.name).trim().replace(/\s+/g, " ");
+  const salutation = req.body.salutation ? String(req.body.salutation).trim().slice(0, 40) : undefined;
   const { visitor } = visitorOf(req);
 
   const current = await Chat.findOne({ sessionId }).select("lead messages").lean<any>();
   let target = sessionId;
   let resumed = false;
+  const validName = isKnownName(name) ? name : "";
 
   // A page reload of the same chat keeps it; otherwise look for this visitor's earlier chat
-  const sameChat = current?.lead?.name && current.lead.name.toLowerCase() === name.toLowerCase();
-  if (!sameChat && !current?.lead?.phone) {
-    const previous = await Chat.findOne({
-      sessionId: { $ne: sessionId },
-      source: { $ne: "manual" },
-      "visitor.ip": visitor.ip,
-      "lead.name": { $regex: `^${escapeRegex(name)}$`, $options: "i" },
-      "workflow.spam": { $ne: true },
-      updatedAt: { $gte: new Date(Date.now() - RESUME_WITHIN_DAYS * DAY_MS) },
-    })
-      .sort({ updatedAt: -1 })
-      .select("sessionId")
-      .lean<any>();
-    if (previous) {
-      target = previous.sessionId;
-      resumed = true;
-      // Anything this browser saved before the name was given joins the earlier chat
-      if (current?.messages?.length) await Chat.updateOne({ sessionId: target }, { $push: { messages: { $each: current.messages } } });
-      if (current) await Chat.deleteOne({ sessionId });
+  if (validName) {
+    const sameChat = current?.lead?.name && current.lead.name.toLowerCase() === validName.toLowerCase();
+    if (!sameChat && !current?.lead?.phone) {
+      const previous = await Chat.findOne({
+        sessionId: { $ne: sessionId },
+        source: { $ne: "manual" },
+        "visitor.ip": visitor.ip,
+        "lead.name": { $regex: `^${escapeRegex(validName)}$`, $options: "i" },
+        "workflow.spam": { $ne: true },
+        updatedAt: { $gte: new Date(Date.now() - RESUME_WITHIN_DAYS * DAY_MS) },
+      })
+        .sort({ updatedAt: -1 })
+        .select("sessionId")
+        .lean<any>();
+      if (previous) {
+        target = previous.sessionId;
+        resumed = true;
+        // Anything this browser saved before the name was given joins the earlier chat
+        if (current?.messages?.length) await Chat.updateOne({ sessionId: target }, { $push: { messages: { $each: current.messages } } });
+        if (current) await Chat.deleteOne({ sessionId });
+      }
     }
   }
 
   await Chat.updateOne(
     { sessionId: target },
-    { $set: { "lead.name": name, visitorName: name, visitor, ...(pageUrl ? { pageUrl } : {}) } },
+    {
+      $set: {
+        ...(validName ? { "lead.name": validName, visitorName: validName } : {}),
+        ...(salutation && validName ? { "lead.salutation": salutation } : {}),
+        visitor,
+        ...(pageUrl ? { pageUrl } : {}),
+      },
+    },
     { upsert: true }
   );
 
@@ -311,7 +367,7 @@ export const startByName = asyncHandler(async (req: Request, res: Response) => {
     createdAt: m.createdAt,
   }));
 
-  res.status(200).json(ApiResponse.ok(resumed ? "Welcome back" : "Chat started", { sessionId: target, name, resumed, messages }));
+  res.status(200).json(ApiResponse.ok(resumed ? "Welcome back" : "Chat started", { sessionId: target, name: validName, resumed, messages }));
 });
 
 // ─── Contact details typed in the chat ───────────────────────────────────────
@@ -453,6 +509,13 @@ export const sendChatMessage = asyncHandler(async (req: Request, res: Response) 
 
   const { visitorName, visitor } = visitorOf(req);
 
+  // Check if IP is blocked due to abuse
+  const block = await blockOf(visitor.ip);
+  if (block) {
+    res.status(403).json({ success: false, code: "BLOCKED", message: block.reason, leftMs: block.leftMs });
+    return;
+  }
+
   // Visitors chat freely: until the mobile number is verified the chat is saved as "Visitor <ip>"
   const chat = await Chat.findOne({ sessionId })
     .select({ lead: 1, enquiryId: 1, aiQuestions: 1, "workflow.status": 1, messages: { $slice: -HISTORY_LIMIT } })
@@ -495,6 +558,17 @@ export const sendChatMessage = asyncHandler(async (req: Request, res: Response) 
     saved: [...(newPhone ? ["phone" as const] : []), ...(newEmail ? ["email" as const] : [])],
   };
 
+  let outboundCallResult: OutboundCallResult | null = null;
+  const wantsCallNow = CALL_INTENT.test(message) || (Boolean(newPhone) && CALL_INTENT.test(recentAsks));
+  if (wantsCallNow && contact.phone) {
+    outboundCallResult = await placeOutboundCall({
+      phone: contact.phone,
+      visitorName: chat?.lead?.name,
+      sessionId,
+      reason: message,
+    });
+  }
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -533,37 +607,135 @@ export const sendChatMessage = asyncHandler(async (req: Request, res: Response) 
   };
 
   try {
+    let aiSucceeded = false;
     const client = getOpenAI();
-    if (!client) throw new Error("OPENAI_API_KEY is not configured");
+    let instructions = buildInstructions(chat?.lead?.name || undefined, ctx, contact);
+    if (outboundCallResult?.ok) {
+      instructions += `\n\nOUTBOUND CALL STATUS: An automated AI phone call from Vaidhya Mitra has JUST BEEN PLACED to ${contact.phone}. Inform the visitor warmly that their phone is ringing right now and to please pick up!`;
+    } else if (outboundCallResult && !outboundCallResult.configured) {
+      instructions += `\n\nOUTBOUND CALL STATUS: Live automated phone dialing (Twilio/telephony trunk) is not yet configured on the server, so DO NOT pretend their phone is ringing right now. Confirm that their number (${contact.phone}) is saved and our Vaidhyashala clinic team will call them back shortly, or they can talk live right here using the "वॉइस कॉल" button.`;
+    }
 
-    const model = env.OPENAI_MODEL;
-    const stream = await client.responses.create(
-      {
-        model,
-        instructions: buildInstructions(chat?.lead?.name || undefined, ctx, contact),
-        input: [
-          ...context.map((m: { role: "user" | "assistant"; content: string }) => ({ role: m.role, content: m.content })),
-          { role: "user" as const, content: message },
-        ],
-        max_output_tokens: 800,
-        // Reasoning models spend output tokens on thinking; keep it light for short FAQ answers.
-        ...(/^(gpt-5|o\d)/.test(model) ? { reasoning: { effort: "low" as const } } : {}),
-        stream: true,
-      },
-      { signal: controller.signal }
-    );
+    // 1. Try OpenAI streaming first
+    if (client) {
+      try {
+        const model = env.OPENAI_MODEL;
+        const stream = await client.responses.create(
+          {
+            model,
+            instructions,
+            input: [
+              ...context.map((m: { role: "user" | "assistant"; content: string }) => ({ role: m.role, content: m.content })),
+              { role: "user" as const, content: message },
+            ],
+            max_output_tokens: 800,
+            ...(/^(gpt-5|o\d)/.test(model) ? { reasoning: { effort: "low" as const } } : {}),
+            stream: true,
+          },
+          { signal: controller.signal }
+        );
 
-    for await (const event of stream) {
-      if (event.type === "response.output_text.delta") {
-        reply += event.delta;
-        flush(false);
-      } else if (event.type === "response.failed" || event.type === "error") {
-        throw new Error(`OpenAI stream failed: ${JSON.stringify(event)}`);
+        for await (const event of stream) {
+          if (event.type === "response.output_text.delta") {
+            reply += event.delta;
+            flush(false);
+          } else if (event.type === "response.failed" || event.type === "error") {
+            throw new Error(`OpenAI stream failed: ${JSON.stringify(event)}`);
+          }
+        }
+        aiSucceeded = true;
+      } catch (openAiErr: any) {
+        logger.warn(`OpenAI streaming failed: ${openAiErr.message}. Attempting Gemini fallback...`);
       }
     }
 
-    flush(true);
-    send({ done: true });
+    // 2. Gemini fallback if OpenAI was unavailable or failed
+    if (!aiSucceeded && !controller.signal.aborted) {
+      const geminiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+      if (geminiKey) {
+        const models = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-flash-latest"];
+        for (const m of models) {
+          try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:streamGenerateContent?alt=sse&key=${encodeURIComponent(geminiKey)}`;
+            const contents = [
+              ...context.map((m: { role: "user" | "assistant"; content: string }) => ({
+                role: m.role === "assistant" ? "model" : "user",
+                parts: [{ text: m.content }],
+              })),
+              { role: "user", parts: [{ text: message }] },
+            ];
+
+            const gRes = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                systemInstruction: { parts: [{ text: instructions }] },
+                contents,
+                generationConfig: { maxOutputTokens: 800, temperature: 0.7 },
+              }),
+              signal: controller.signal,
+            });
+
+            if (gRes.ok && gRes.body) {
+              const reader = gRes.body.getReader();
+              const decoder = new TextDecoder();
+              let buffer = "";
+
+              for (;;) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                  if (line.startsWith("data: ")) {
+                    const raw = line.slice(6).trim();
+                    if (!raw) continue;
+                    try {
+                      const data = JSON.parse(raw);
+                      const deltaText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                      if (deltaText) {
+                        reply += deltaText;
+                        flush(false);
+                      }
+                    } catch {
+                      // ignore parse errors
+                    }
+                  }
+                }
+              }
+              aiSucceeded = true;
+              break;
+            }
+          } catch (gErr: any) {
+            logger.warn(`Gemini ${m} stream attempt failed: ${gErr.message}`);
+          }
+        }
+      }
+    }
+
+    // 3. Smart local Ayurvedic fallback if all external AI keys are out of credits
+    if (!aiSucceeded && !reply) {
+      const q = message.toLowerCase();
+      if (/kisne banaya|created you|made you|developed|developer|rohit/i.test(q)) {
+        reply = CREATOR_ATTRIBUTION.hi;
+      } else if (/address|pata|location|kahan|timing|time|kab|open|hours|clinic|पता|समय/i.test(q)) {
+        reply = `हमारा वैद्यशाला क्लिनिक **${CONTACT.address}** पर स्थित है। समय: **${CONTACT.hours}**। आप अपॉइंटमेंट के लिए **${CONTACT.phone}** या **${CONTACT.alternatePhone}** पर कॉल/व्हाट्सएप कर सकते हैं।`;
+      } else if (/panchakarma|पंचकर्म|vamana|virechana|basti|nasya|shirodhara/i.test(q)) {
+        reply = `वैद्यशाला में शास्त्रीय **पंचकर्म चिकित्सा** (वमन, विरेचन, बस्ति, नस्य, रक्तमोक्षण) और शिरोधारा, अभ्यंग, कटि बस्ति जैसी विशिष्ट थैरेपीज़ उपलब्ध हैं। अधिक जानकारी के लिए [पंचकर्म पेज](${CONTACT.panchakarmaPage}) देखें या **${CONTACT.phone}** पर संपर्क करें।`;
+      } else if (/consult|appointment|doctor|vaidya|book|कंसल्टेशन|डॉक्टर|अपॉइंटमेंट/i.test(q)) {
+        reply = `आप हमारे अनुभवी आयुर्वेदिक डॉक्टरों (BAMS/MD) से क्लिनिक में या ऑनलाइन टेली-कंसल्टेशन बुक कर सकते हैं। कृपया अपना 10 अंकों का मोबाइल नंबर यहाँ साझा करें या [कंसल्टेशन पेज](${CONTACT.contactPage}) पर जाएँ।`;
+      } else if (/product|medicine|aushadhi|herbal|दवा|औषधि/i.test(q)) {
+        reply = `वैद्यशाला में प्रामाणिक आयुर्वेदिक औषधियाँ, तैल, चूर्ण और रसायन उपलब्ध हैं। आप इन्हें [प्रोडक्ट्स पेज](${CONTACT.productsPage}) पर देख सकते हैं।`;
+      }
+      if (!reply) reply = FALLBACK_REPLY;
+      flush(true);
+      send({ done: true });
+    } else {
+      flush(true);
+      send({ done: true });
+    }
   } catch (error: any) {
     if (!controller.signal.aborted) {
       logger.error(`Chatbot reply failed: ${error?.message}`);
@@ -819,4 +991,210 @@ export const getChatById = asyncHandler(async (req: Request, res: Response) => {
   const chat = await Chat.findById(id).lean();
   if (!chat) throw ApiError.notFound("Chat not found");
   res.status(200).json(ApiResponse.ok("Chat fetched successfully", chat));
+});
+
+// ─── Live Voice Call (OpenAI Realtime over WebRTC) ─────────────────────────
+
+// POST /api/chat/call { sdp, sessionId, pageUrl, noise }
+export const startCall = asyncHandler(async (req: Request, res: Response) => {
+  const sdp = String(req.body.sdp || "").slice(0, 20000);
+  if (!sdp) throw ApiError.badRequest("No connection offer received");
+  const sessionId = String(req.body.sessionId || "").trim().slice(0, 100);
+  if (!sessionId) throw ApiError.badRequest("sessionId is required");
+  const pageUrl = String(req.body.pageUrl || "").slice(0, 500);
+  const { visitor, visitorName } = visitorOf(req);
+
+  const block = await blockOf(visitor.ip);
+  if (block) {
+    res.status(403).json({ success: false, code: "BLOCKED", message: block.reason, leftMs: block.leftMs });
+    return;
+  }
+  if (!callAvailable()) {
+    res.status(503).json({ success: false, code: "CALL_UNAVAILABLE", message: "Voice calls aren't available right now. Please type your message." });
+    return;
+  }
+
+  let chat = await Chat.findOne({ sessionId }).select({ lead: 1, closed: 1, messages: { $slice: -10 } }).lean<any>();
+  let target = sessionId;
+  await Chat.updateOne({ sessionId: target }, { $set: { visitor, ...(pageUrl ? { pageUrl } : {}) }, $setOnInsert: { visitorName } }, { upsert: true });
+
+  const name = chat?.lead?.name && isKnownName(chat.lead.name) ? chat.lead.name : undefined;
+  const salutation = name ? chat?.lead?.salutation || undefined : undefined;
+  const greeting = name
+    ? `नमस्कार ${salutation || name} जी! वैद्यशाला में आपका स्वागत है। बताइए, मैं आपकी क्या सहायता करूँ?`
+    : "नमस्कार! मैं शालू, आपकी आयुर्वेद साथी। वैद्यशाला में आपका स्वागत है। मैं आपको किस नाम से संबोधित करूँ? आपका शुभ नाम क्या है?";
+  const earlier = ((chat?.messages || []) as any[]).map((m) => ({ role: m.role, content: m.content }));
+  const instructions = callInstructions(salutation || name, {}, { phone: chat?.lead?.phone, email: chat?.lead?.email }, earlier);
+
+  try {
+    const { sdp: answer, maxSeconds } = await openCall({ sessionId: target, ip: visitor.ip, sdp, noise: req.body.noise !== false, instructions });
+    res.status(200).json(ApiResponse.ok("Call started", { sdp: answer, sessionId: target, maxSeconds, name: salutation || name || "", greeting }));
+  } catch (err: any) {
+    logger.error(`StartCall failed: ${err?.message}`);
+    res.status(503).json({ success: false, code: "CALL_UNAVAILABLE", message: "The voice call couldn't connect. Please type your message." });
+  }
+});
+
+// POST /api/chat/call/turn { sessionId, role, text }
+export const callTurn = asyncHandler(async (req: Request, res: Response) => {
+  const sessionId = String(req.body.sessionId || "").trim();
+  const role = req.body.role === "user" ? "user" : "assistant";
+  const heard = String(req.body.text || "").trim().slice(0, 3000);
+  const { visitor, visitorName } = visitorOf(req);
+  if (!heard || !isLive(sessionId, visitor.ip)) {
+    res.status(200).json(ApiResponse.ok("Skipped", { saved: false }));
+    return;
+  }
+  const text = heard;
+  if (role === "user") {
+    const found = contactIn(text);
+    if (found.phone || found.email) {
+      const chat = await Chat.findOne({ sessionId }).select({ lead: 1, enquiryId: 1, "workflow.status": 1, messages: { $slice: -6 } }).lean<any>();
+      const newPhone = found.phone && found.phone !== chat?.lead?.phone ? found.phone : undefined;
+      const newEmail = found.email && found.email !== chat?.lead?.email ? found.email : undefined;
+      if (newPhone || newEmail) {
+        await saveTypedContact({ sessionId, chat, phone: newPhone, email: newEmail, question: text, wantsCall: true, visitor }).catch((error: any) =>
+          logger.error(`Could not save contact details from a call ${sessionId}: ${error?.message}`)
+        );
+      }
+    }
+  }
+  await Chat.updateOne(
+    { sessionId },
+    {
+      $push: { messages: { role, content: text, createdAt: new Date() } },
+      $set: { visitor },
+      ...(role === "assistant" ? { $inc: { aiQuestions: 1 } } : {}),
+      $setOnInsert: { visitorName },
+    },
+    { upsert: true }
+  );
+  res.status(200).json(ApiResponse.ok("Saved", { saved: true, text }));
+});
+
+// POST /api/chat/call/tool { sessionId, name, args }
+export const callTool = asyncHandler(async (req: Request, res: Response) => {
+  const sessionId = String(req.body.sessionId || "").trim();
+  const name = String(req.body.name || "");
+  const args = (req.body.args && typeof req.body.args === "object" ? req.body.args : {}) as Record<string, unknown>;
+  const { visitor } = visitorOf(req);
+  if (!isLive(sessionId, visitor.ip)) throw ApiError.notFound("No call going on");
+
+  if (name === "update_visitor") {
+    const saved: string[] = [];
+    const said = String(args.name || "").trim().replace(/\s+/g, " ");
+    const given = said && isRealName(said) ? said.slice(0, 40) : "";
+    let savedName = "";
+    if (given) {
+      await Chat.updateOne({ sessionId }, { $set: { "lead.name": given, visitorName: given } });
+      savedName = given;
+      saved.push("name");
+    }
+    const toldSalutation = String(args.salutation || "").trim().replace(/\s+/g, " ").replace(/\s+(?:ji|jee|जी)$/iu, "");
+    if (toldSalutation && isRealName(toldSalutation)) {
+      await Chat.updateOne({ sessionId }, { $set: { "lead.salutation": toldSalutation } });
+      saved.push("salutation");
+    }
+    const mobile = args.phone ? toTenDigitMobile(String(args.phone)) : "";
+    const phone = /^[6-9]\d{9}$/.test(mobile) ? mobile : undefined;
+    const emailRaw = String(args.email || "").trim().toLowerCase();
+    const email = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailRaw) && emailRaw.length <= 100 ? emailRaw : undefined;
+    if (phone || email) {
+      const chat = await Chat.findOne({ sessionId }).select({ lead: 1, enquiryId: 1, "workflow.status": 1 }).lean<any>();
+      await saveTypedContact({ sessionId, chat, phone, email, question: "Shared in voice call with Vaidhya Mitra", wantsCall: Boolean(phone), visitor });
+      if (phone) saved.push("phone");
+      if (email) saved.push("email");
+    }
+    const output = { saved: saved.length ? saved : "nothing valid to save", ...(said && !given ? { name: "not a name: ask for their name again" } : {}) };
+    res.status(200).json(ApiResponse.ok("Saved", { output, name: savedName }));
+    return;
+  }
+  if (name === "request_callback") {
+    const chat = await Chat.findOne({ sessionId }).select({ lead: 1, enquiryId: 1, "workflow.status": 1 }).lean<any>();
+    const said = args.phone ? toTenDigitMobile(String(args.phone)) : "";
+    const phone = /^[6-9]\d{9}$/.test(said) ? said : chat?.lead?.phone;
+    if (!phone) {
+      res.status(200).json(ApiResponse.ok("No number", { output: { ok: false, next: "no mobile number saved: ask for their 10-digit number" } }));
+      return;
+    }
+    const when = String(args.preferred_time || "").trim().slice(0, 80);
+    await saveTypedContact({ sessionId, chat, phone, question: `Requested consultation callback in voice call${when ? ` (preferred time: ${when})` : ""}`, wantsCall: true, visitor });
+    const callRes = await placeOutboundCall({ phone, visitorName: chat?.lead?.name, sessionId });
+    res.status(200).json(
+      ApiResponse.ok("Noted", {
+        output: {
+          ok: true,
+          outbound_call_dialed: callRes.ok,
+          noted: callRes.ok ? "outbound phone call dialed right now" : "callback request for doctor consultation noted",
+          number_ends_in: phone.slice(-4),
+        },
+      })
+    );
+    return;
+  }
+  if (name === "search_knowledge") {
+    res.status(200).json(ApiResponse.ok("Found", { output: { results: [{ title: "Vaidhyashala Clinic & Panchakarma", text: KNOWLEDGE }] } }));
+    return;
+  }
+  res.status(200).json(ApiResponse.ok("Done", { output: { ok: true } }));
+});
+
+// POST /api/chat/call/end { sessionId }
+export const stopCall = asyncHandler(async (req: Request, res: Response) => {
+  const sessionId = String(req.body.sessionId || "").trim();
+  const { visitor } = visitorOf(req);
+  if (isLive(sessionId, visitor.ip)) {
+    endCall(sessionId);
+  }
+  res.status(200).json(ApiResponse.ok("Call ended", null));
+});
+
+// POST /api/chat/call-me { sessionId, phone, name } — initiates an immediate outbound phone call to the visitor
+export const requestPhoneCall = asyncHandler(async (req: Request, res: Response) => {
+  const sessionId = String(req.body.sessionId || "").trim();
+  const rawPhone = String(req.body.phone || "").trim();
+  const rawName = String(req.body.name || "").trim();
+  const { visitor } = visitorOf(req);
+
+  const phone = toTenDigitMobile(rawPhone);
+  if (!/^[6-9]\d{9}$/.test(phone)) {
+    throw ApiError.badRequest("Please provide a valid 10-digit Indian mobile number.");
+  }
+
+  const chat = sessionId ? await Chat.findOne({ sessionId }).select({ lead: 1, enquiryId: 1, "workflow.status": 1 }).lean<any>() : null;
+  if (sessionId) {
+    await saveTypedContact({
+      sessionId,
+      chat,
+      phone,
+      question: "Requested immediate phone call via Calling Agent",
+      wantsCall: true,
+      visitor,
+    });
+  }
+
+  const result = await placeOutboundCall({
+    phone,
+    visitorName: rawName || chat?.lead?.name,
+    sessionId,
+  });
+
+  if (!result.configured) {
+    res.status(200).json(
+      ApiResponse.ok("Callback saved (telephony provider pending)", {
+        dialed: false,
+        code: result.code,
+        phone,
+        message: "Number saved for callback. Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER in .env for instant automated dialing.",
+      })
+    );
+    return;
+  }
+
+  if (!result.ok) {
+    res.status(502).json({ success: false, code: result.code || "CALL_FAILED", message: result.error || "Could not place call" });
+    return;
+  }
+
+  res.status(200).json(ApiResponse.ok("Calling your number now", { dialed: true, callSid: result.callSid, to: result.to }));
 });

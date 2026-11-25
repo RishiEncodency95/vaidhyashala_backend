@@ -69,6 +69,43 @@ export const chatHistoryLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+export const chatVoiceLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 80,
+  message: new ApiError(429, "Too many voice requests. Please wait a few minutes."),
+  skip: limitsOff,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+export const chatTranscribeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 40,
+  message: new ApiError(429, "Too many recordings. Please wait a few minutes or type your message."),
+  skip: limitsOff,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Spoken calls: opening one, and everything sent during it (turns, tools)
+export const chatCallLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 12,
+  message: new ApiError(429, "Too many calls. Please wait a few minutes or type your message."),
+  skip: limitsOff,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+export const chatDuringCallLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  message: new ApiError(429, "Too many requests during the call."),
+  skip: limitsOff,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // General API limiter
 // Skipped outside production: locally the admin, the website's server rendering and the
 // browser all call the API from the same localhost IP, so one CMS save (plus the page
