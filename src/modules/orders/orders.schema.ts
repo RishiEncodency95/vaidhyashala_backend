@@ -48,6 +48,27 @@ export const verifyPaymentSchema = z.object({
     .strict(),
 });
 
+export const orderPaymentCheckSchema = z.object({
+  body: z
+    .object({
+      orderId: objectId,
+      razorpay_order_id: text(100).min(1),
+    })
+    .strict(),
+});
+
+export const failPaymentSchema = z.object({
+  body: z
+    .object({
+      orderId: objectId,
+      razorpay_order_id: text(100).min(1),
+      razorpay_payment_id: text(100).optional(),
+      reason: text(300).optional(),
+      code: text(100).optional(),
+    })
+    .strict(),
+});
+
 export const orderIdSchema = z.object({ params: z.object({ id: objectId }) });
 
 export const updateOrderSchema = z.object({

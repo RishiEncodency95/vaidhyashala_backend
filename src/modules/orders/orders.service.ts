@@ -149,6 +149,110 @@ export const verifyPayment = async (input: {
   return { orderNumber: order.orderNumber, total: order.total };
 };
 
+/** Records a Razorpay payment.failed callback so the order shows as failed until retried */
+export const markPaymentFailed = async (input: {
+  orderId: string;
+  razorpay_order_id: string;
+  razorpay_payment_id?: string;
+  reason?: string;
+  code?: string;
+}) => {
+  const order = await Order.findById(input.orderId);
+  if (!order || order.razorpayOrderId !== input.razorpay_order_id) throw ApiError.badRequest("Order not found.");
+  if (order.paymentStatus === "paid") {
+    return { orderNumber: order.orderNumber, paymentStatus: "paid" as const, total: order.total };
+  }
+  order.paymentStatus = "failed";
+  if (input.razorpay_payment_id) order.razorpayPaymentId = input.razorpay_payment_id;
+  if (input.reason || input.code) {
+    const note = `Payment failed${input.code ? ` (${input.code})` : ""}: ${input.reason || "Transaction declined"}`;
+    order.adminNote = order.adminNote ? `${order.adminNote}\n${note}`.slice(0, 1000) : note.slice(0, 1000);
+  }
+  await order.save();
+  return { orderNumber: order.orderNumber, paymentStatus: order.paymentStatus, total: order.total };
+};
+
+/** Checks live payment status with Razorpay for pending orders (used by /payment-pending polling) */
+export const checkPaymentStatus = async (input: { orderId: string; razorpay_order_id: string }) => {
+  const order = await Order.findById(input.orderId);
+  if (!order || order.razorpayOrderId !== input.razorpay_order_id) throw ApiError.badRequest("Order not found.");
+
+  if (order.paymentStatus === "paid") {
+    return { orderNumber: order.orderNumber, paymentStatus: "paid" as const, total: order.total };
+  }
+
+  try {
+    const { keyId, keySecret } = keys();
+    const res = await fetch(`https://api.razorpay.com/v1/orders/${encodeURIComponent(input.razorpay_order_id)}/payments`, {
+      headers: { Authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString("base64")}` },
+    });
+    if (res.ok) {
+      const json = (await res.json()) as { items?: Array<{ id: string; status: string; error_description?: string; error_code?: string }> };
+      const payments = json.items || [];
+      const paid = payments.find((p) => p.status === "captured" || p.status === "authorized");
+      if (paid) {
+        await markPaid(order._id, paid.id);
+        return { orderNumber: order.orderNumber, paymentStatus: "paid" as const, total: order.total };
+      }
+      const hasPending = payments.some((p) => p.status === "created");
+      const failed = payments.find((p) => p.status === "failed");
+      if (failed && !hasPending) {
+        order.paymentStatus = "failed";
+        order.razorpayPaymentId = failed.id;
+        await order.save();
+        return {
+          orderNumber: order.orderNumber,
+          paymentStatus: "failed" as const,
+          total: order.total,
+          reason: failed.error_description || "Payment was declined by your bank or UPI app.",
+          code: failed.error_code || "",
+        };
+      }
+    }
+  } catch {
+    // keep current DB status if Razorpay lookup momentarily fails
+  }
+
+  return { orderNumber: order.orderNumber, paymentStatus: order.paymentStatus, total: order.total };
+};
+
+/** Creates a fresh Razorpay order for an existing unpaid order so the user can retry payment cleanly */
+export const retryOrderPayment = async (input: { orderId: string; razorpay_order_id: string }) => {
+  const { keyId, keySecret } = keys();
+  const order = await Order.findById(input.orderId);
+  if (!order || order.razorpayOrderId !== input.razorpay_order_id) throw ApiError.badRequest("Order not found.");
+  if (order.paymentStatus === "paid") {
+    return {
+      alreadyPaid: true,
+      orderId: String(order._id),
+      orderNumber: order.orderNumber,
+      total: order.total,
+    };
+  }
+
+  const res = await fetch("https://api.razorpay.com/v1/orders", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString("base64")}`,
+    },
+    body: JSON.stringify({ amount: Math.round(order.total * 100), currency: "INR", receipt: order.orderNumber }),
+  });
+  if (!res.ok) throw new ApiError(502, "Could not restart payment. Please try again in a moment.");
+  const rz = (await res.json()) as { id: string; amount: number; currency: string };
+  order.razorpayOrderId = rz.id;
+  order.paymentStatus = "pending";
+  await order.save();
+
+  return {
+    alreadyPaid: false,
+    orderId: String(order._id),
+    orderNumber: order.orderNumber,
+    total: order.total,
+    razorpay: { keyId, orderId: rz.id, amount: rz.amount, currency: rz.currency },
+  };
+};
+
 /**
  * Razorpay webhook (Dashboard → Webhooks, events "payment.captured" and "order.paid").
  * Backup for when the customer pays but closes the tab before the site can confirm it.

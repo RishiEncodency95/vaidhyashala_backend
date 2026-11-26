@@ -5,7 +5,7 @@ import { validateRequest } from "../../middlewares/validate.middleware";
 import { enquiryLimiter } from "../../middlewares/rateLimiter.middleware";
 import { protect } from "../../middlewares/auth.middleware";
 import { requirePermission } from "../../middlewares/permission.middleware";
-import { couponSchema, createOrderSchema, orderIdSchema, updateOrderSchema, verifyPaymentSchema } from "./orders.schema";
+import { couponSchema, createOrderSchema, failPaymentSchema, orderIdSchema, orderPaymentCheckSchema, updateOrderSchema, verifyPaymentSchema } from "./orders.schema";
 import * as service from "./orders.service";
 
 /** Website: /api/website/orders — checkout and payment check */
@@ -34,6 +34,31 @@ ordersPublicRouter.post(
   validateRequest(verifyPaymentSchema),
   asyncHandler(async (req, res) => {
     res.status(200).json(ApiResponse.ok("Payment confirmed", await service.verifyPayment(req.body)));
+  }),
+);
+
+ordersPublicRouter.post(
+  "/fail",
+  validateRequest(failPaymentSchema),
+  asyncHandler(async (req, res) => {
+    res.status(200).json(ApiResponse.ok("Payment failure recorded", await service.markPaymentFailed(req.body)));
+  }),
+);
+
+ordersPublicRouter.post(
+  "/status",
+  validateRequest(orderPaymentCheckSchema),
+  asyncHandler(async (req, res) => {
+    res.status(200).json(ApiResponse.ok("Payment status fetched", await service.checkPaymentStatus(req.body)));
+  }),
+);
+
+ordersPublicRouter.post(
+  "/retry",
+  enquiryLimiter,
+  validateRequest(orderPaymentCheckSchema),
+  asyncHandler(async (req, res) => {
+    res.status(200).json(ApiResponse.ok("Retry order ready", await service.retryOrderPayment(req.body)));
   }),
 );
 
